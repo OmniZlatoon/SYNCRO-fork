@@ -1,6 +1,8 @@
 import cron from 'node-cron';
 import logger from '../config/logger';
 import { reminderEngine } from './reminder-engine';
+import { renewalExecutor } from './renewal-executor';
+import { supabase } from '../config/database';
 
 export class SchedulerService {
   private jobs: cron.ScheduledTask[] = [];
@@ -47,7 +49,50 @@ export class SchedulerService {
 
     this.jobs.push(retryJob);
 
+    // Schedule renewal execution - runs every hour
+    const renewalJob = cron.schedule('0 * * * *', async () => {
+      logger.info('Running scheduled renewal execution');
+      try {
+        await this.processRenewals();
+      } catch (error) {
+        logger.error('Error in scheduled renewal execution:', error);
+      }
+    });
+
+    this.jobs.push(renewalJob);
+
     logger.info(`Started ${this.jobs.length} scheduled jobs`);
+  }
+
+  private async processRenewals(): Promise<void> {
+    const { data: pendingRenewals, error } = await supabase
+      .from('subscriptions')
+      .select('id, user_id, price')
+      .eq('status', 'active')
+      .lte('next_billing_date', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString());
+
+    if (error || !pendingRenewals) {
+      logger.error('Failed to fetch pending renewals:', error);
+      return;
+    }
+
+    for (const sub of pendingRenewals) {
+      const { data: approval } = await supabase
+        .from('renewal_approvals')
+        .select('approval_id')
+        .eq('subscription_id', sub.id)
+        .eq('used', false)
+        .single();
+
+      if (approval) {
+        await renewalExecutor.executeRenewalWithRetry({
+          subscriptionId: sub.id,
+          userId: sub.user_id,
+          approvalId: approval.approval_id,
+          amount: sub.price,
+        });
+      }
+    }
   }
 
   /**

@@ -344,7 +344,7 @@ interface SubscriptionCardProps {
   unusedInfo?: any
 }
 
-function SubscriptionCard({
+export function SubscriptionCard({
   subscription: sub,
   onDelete,
   onManage,

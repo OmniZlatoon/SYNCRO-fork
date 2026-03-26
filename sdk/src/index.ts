@@ -8,7 +8,26 @@ import type {
   StellarWallet,
   StellarKeypair,
   RetryOptions,
+  CreateSubscriptionInput,
+  UpdateSubscriptionInput,
+  SubscriptionFilters,
+  SubscriptionRecord,
+  PaginatedResult,
+  AnalyticsSummary,
+  RenewalEvent,
+  CreateWebhookInput,
+  Webhook,
+  AppNotification,
 } from "./types.js";
+import {
+  SyncroError,
+  NotFoundError,
+  AuthenticationError,
+  RateLimitError,
+  ValidationError,
+  createApiError,
+} from "./errors.js";
+
 
 export interface Subscription {
   id: string;
@@ -283,11 +302,6 @@ export class SyncroSDK extends EventEmitter {
       const errorMessage = error.response?.data?.error || error.message;
       this.log("Error cancelling subscription:", subscriptionId, errorMessage);
 
-      this.logger.error("Subscription cancellation failed", {
-        subscriptionId,
-        error: errorMessage,
-      });
-
       const failedResult: any = {
         success: false,
         status: "failed",
@@ -299,6 +313,7 @@ export class SyncroSDK extends EventEmitter {
       throw new Error(`Cancellation failed: ${errorMessage}`);
     }
   }
+
 
   /**
    * Get subcription details
@@ -321,14 +336,14 @@ export class SyncroSDK extends EventEmitter {
     const cacheKey = `syncro_subs_${this.apiKey}`;
 
     try {
-      this.logger.info("Fetching user subscriptions");
+      this.log("Fetching user subscriptions");
       let allSubscriptions: any[] = [];
       let offset = 0;
       const limit = 50;
       let hasMore = true;
 
       while (hasMore) {
-        this.logger.debug("Fetching subscriptions batch", { offset, limit });
+        this.log("Fetching subscriptions batch", { offset, limit });
         const response = await this.client.get("/subscriptions", {
           params: { limit, offset },
         });
@@ -355,7 +370,7 @@ export class SyncroSDK extends EventEmitter {
       this.updateCache(cacheKey, normalized);
       this.log(`Fetched ${normalized.length} subscriptions`);
 
-      this.logger.info("User subscriptions fetched successfully", {
+      this.log("User subscriptions fetched successfully", {
         count: normalized.length,
       });
       return normalized;
@@ -368,9 +383,9 @@ export class SyncroSDK extends EventEmitter {
         );
         return cached;
       }
-      this.logger.error("Failed to fetch subscriptions", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.log("Failed to fetch subscriptions",
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
   }
@@ -416,6 +431,296 @@ export class SyncroSDK extends EventEmitter {
       return null;
     }
     return null;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Private helper: map Axios errors to typed SDK errors
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private handleApiError(error: any): never {
+    if (error.response) {
+      const { status, data, headers } = error.response;
+      const message: string =
+        data?.error || data?.message || error.message || "Unknown API error";
+      const code: string | undefined = data?.code;
+      const retryAfter = headers?.["retry-after"]
+        ? parseInt(headers["retry-after"], 10)
+        : undefined;
+      throw createApiError(status, message, code, retryAfter);
+    }
+    // Network / timeout errors
+    throw new SyncroError(error.message || "Network error", "NETWORK_ERROR");
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Subscription management
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a new subscription.
+   */
+  async createSubscription(
+    input: CreateSubscriptionInput,
+  ): Promise<SubscriptionRecord> {
+    try {
+      this.log("Creating subscription:", input.name);
+      const response = await this.client.post("/subscriptions", input);
+      const record: SubscriptionRecord = response.data.data;
+      this.emit("subscription:created", record);
+      return record;
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  /**
+   * Update an existing subscription by ID.
+   */
+  async updateSubscription(
+    id: string,
+    input: UpdateSubscriptionInput,
+  ): Promise<SubscriptionRecord> {
+    try {
+      this.log("Updating subscription:", id);
+      const response = await this.client.patch(`/subscriptions/${id}`, input);
+      const record: SubscriptionRecord = response.data.data;
+      this.emit("subscription:updated", record);
+      return record;
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  /**
+   * Delete a subscription by ID.
+   */
+  async deleteSubscription(id: string): Promise<void> {
+    try {
+      this.log("Deleting subscription:", id);
+      await this.client.delete(`/subscriptions/${id}`);
+      this.emit("subscription:deleted", { id });
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  /**
+   * List subscriptions with optional filtering and pagination.
+   */
+  async listSubscriptions(
+    options?: SubscriptionFilters,
+  ): Promise<PaginatedResult<SubscriptionRecord>> {
+    try {
+      this.log("Listing subscriptions with options:", options);
+      const pageSize = options?.limit ?? 20;
+      const page = options?.page ?? 1;
+      const offset = (page - 1) * pageSize;
+
+      const params: Record<string, string | number> = {
+        limit: pageSize,
+        offset,
+      };
+      if (options?.status) params.status = options.status;
+      if (options?.category) params.category = options.category;
+
+      const response = await this.client.get("/subscriptions", { params });
+      const { data, pagination } = response.data;
+      const total: number = pagination?.total ?? data.length;
+
+      return {
+        data,
+        total,
+        hasMore: offset + pageSize < total,
+      };
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Analytics
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Get an analytics summary computed from the user's active subscriptions.
+   * Derives totals locally from the subscription list so it works without a
+   * dedicated analytics endpoint on the backend.
+   */
+  async getAnalyticsSummary(): Promise<AnalyticsSummary> {
+    try {
+      this.log("Fetching analytics summary");
+      // Fetch all subscriptions (up to 500) to compute summary locally
+      const response = await this.client.get("/subscriptions", {
+        params: { limit: 500, offset: 0 },
+      });
+      const subs: SubscriptionRecord[] = response.data.data ?? [];
+
+      const statusCounts: Record<string, number> = {};
+      const categoryCounts: Record<string, number> = {};
+      let totalMonthlyCost = 0;
+      let totalAnnualCost = 0;
+      let totalActive = 0;
+      let upcomingRenewals = 0;
+      const now = new Date();
+      const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      for (const sub of subs) {
+        // Tally by status
+        statusCounts[sub.status] = (statusCounts[sub.status] ?? 0) + 1;
+        // Tally by category
+        const cat = sub.category ?? "Uncategorized";
+        categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
+
+        if (sub.status === "active" || sub.status === "trial") {
+          totalActive++;
+          // Normalise cost to monthly
+          let monthly = sub.price;
+          if (sub.billing_cycle === "yearly") monthly = sub.price / 12;
+          if (sub.billing_cycle === "quarterly") monthly = sub.price / 3;
+          totalMonthlyCost += monthly;
+          totalAnnualCost += monthly * 12;
+
+          // Check for upcoming renewals in next 7 days
+          if (sub.next_billing_date) {
+            const renewal = new Date(sub.next_billing_date);
+            if (renewal >= now && renewal <= sevenDaysFromNow) {
+              upcomingRenewals++;
+            }
+          }
+        }
+      }
+
+      return {
+        totalActiveSubscriptions: totalActive,
+        totalMonthlyCost: Math.round(totalMonthlyCost * 100) / 100,
+        totalAnnualCost: Math.round(totalAnnualCost * 100) / 100,
+        subscriptionsByStatus: statusCounts as Record<any, number>,
+        subscriptionsByCategory: categoryCounts,
+        upcomingRenewals,
+      };
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  /**
+   * Get renewal history for a specific subscription.
+   * Uses the billing simulation endpoint to project past/future renewals.
+   */
+  async getRenewalHistory(subscriptionId: string): Promise<RenewalEvent[]> {
+    try {
+      this.log("Fetching renewal history for subscription:", subscriptionId);
+      // Use the billing simulation for a 365-day window to get renewal events
+      const response = await this.client.get("/simulation", {
+        params: { days: 365 },
+      });
+      const projections: any[] = response.data?.data?.projections ?? [];
+      // Filter to this subscription
+      const events: RenewalEvent[] = projections
+        .filter((p: any) => p.subscriptionId === subscriptionId)
+        .map((p: any) => ({
+          id: `${p.subscriptionId}-${p.projectedDate}`,
+          subscriptionId: p.subscriptionId,
+          subscriptionName: p.subscriptionName,
+          amount: p.amount,
+          billingCycle: p.billingCycle,
+          renewedAt: p.projectedDate,
+          status: "success" as const,
+        }));
+      return events;
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Webhook management (client-side registry stored via API)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Register a new webhook endpoint.
+   */
+  async createWebhook(input: CreateWebhookInput): Promise<Webhook> {
+    try {
+      this.log("Creating webhook for URL:", input.url);
+      const response = await this.client.post("/webhooks", input);
+      const webhook: Webhook = response.data.data;
+      this.emit("webhook:created", webhook);
+      return webhook;
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  /**
+   * List all registered webhooks.
+   */
+  async listWebhooks(): Promise<Webhook[]> {
+    try {
+      this.log("Listing webhooks");
+      const response = await this.client.get("/webhooks");
+      return response.data.data as Webhook[];
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  /**
+   * Delete a webhook by ID.
+   */
+  async deleteWebhook(id: string): Promise<void> {
+    try {
+      this.log("Deleting webhook:", id);
+      await this.client.delete(`/webhooks/${id}`);
+      this.emit("webhook:deleted", { id });
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Notifications
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Retrieve in-app notifications for the authenticated user.
+   * @param options.unreadOnly  When true, only returns unread notifications.
+   */
+  async getNotifications(
+    options?: { unreadOnly?: boolean },
+  ): Promise<AppNotification[]> {
+    try {
+      this.log("Fetching notifications, unreadOnly:", options?.unreadOnly);
+      const response = await this.client.get("/notifications", {
+        params: options?.unreadOnly ? { is_read: false } : {},
+      });
+      const raw: any[] = response.data.data ?? response.data ?? [];
+      // Normalise snake_case → camelCase
+      return raw.map((n: any) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        subscriptionId: n.subscription_id ?? n.subscriptionId ?? null,
+        isRead: n.is_read ?? n.isRead ?? false,
+        createdAt: n.created_at ?? n.createdAt,
+      }));
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
+  }
+
+  /**
+   * Mark a specific notification as read.
+   */
+  async markNotificationRead(id: string): Promise<void> {
+    try {
+      this.log("Marking notification as read:", id);
+      await this.client.patch(`/notifications/${id}`, { is_read: true });
+      this.emit("notification:read", { id });
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
   }
 }
 
@@ -563,4 +868,25 @@ export type {
   RetryOptions,
   StellarWallet,
   StellarKeypair,
+  // Subscription types
+  CreateSubscriptionInput,
+  UpdateSubscriptionInput,
+  SubscriptionFilters,
+  SubscriptionRecord,
+  PaginatedResult,
+  // Analytics types
+  AnalyticsSummary,
+  RenewalEvent,
+  // Webhook types
+  CreateWebhookInput,
+  Webhook,
+  // Notification types
+  AppNotification,
 } from "./types.js";
+export {
+  SyncroError,
+  NotFoundError,
+  AuthenticationError,
+  RateLimitError,
+  ValidationError,
+} from "./errors.js";

@@ -42,7 +42,265 @@ const subscriptions = await sdk.getUserSubscriptions();
 
 ## Configuration
 
-### SyncroSDKConfig Interface
+### @syncro/sdk
+
+Official TypeScript/JavaScript SDK for the **SYNCRO** Subscription Management Platform.
+
+---
+
+## Installation
+
+```bash
+npm install @syncro/sdk
+# or
+pnpm add @syncro/sdk
+```
+
+---
+
+## Quickstart
+
+```typescript
+import { init } from '@syncro/sdk';
+
+const sdk = init({
+  apiKey: 'your-api-key',
+  baseURL: 'https://api.syncro.example.com',
+  enableLogging: true,
+});
+
+sdk.on('ready', ({ baseURL }) => {
+  console.log('SDK ready:', baseURL);
+});
+```
+
+---
+
+## Subscription Management
+
+### Create a subscription
+
+```typescript
+const subscription = await sdk.createSubscription({
+  name: 'Netflix',
+  price: 15.99,
+  billing_cycle: 'monthly',
+  category: 'Entertainment',
+  next_billing_date: '2026-04-01',
+  renewal_url: 'https://netflix.com/account',
+});
+console.log(subscription.id);
+```
+
+### Get a subscription
+
+```typescript
+const sub = await sdk.getSubscription('sub-uuid');
+console.log(sub.name, sub.status);
+```
+
+### Update a subscription
+
+```typescript
+const updated = await sdk.updateSubscription('sub-uuid', {
+  price: 19.99,
+  status: 'paused',
+});
+```
+
+### List subscriptions (with pagination & filters)
+
+```typescript
+const page1 = await sdk.listSubscriptions({
+  page: 1,
+  limit: 20,
+  status: 'active',
+  category: 'Entertainment',
+});
+// page1 = { data: Subscription[], total: number, hasMore: boolean }
+console.log(`${page1.total} total, hasMore=${page1.hasMore}`);
+```
+
+### Cancel a subscription
+
+```typescript
+const result = await sdk.cancelSubscription('sub-uuid');
+// result = { success, status, subscription, redirectUrl, blockchain }
+```
+
+### Delete a subscription
+
+```typescript
+await sdk.deleteSubscription('sub-uuid');
+```
+
+---
+
+## Analytics
+
+### Get analytics summary
+
+```typescript
+const summary = await sdk.getAnalyticsSummary();
+console.log(summary.totalActiveSubscriptions);
+console.log(summary.totalMonthlyCost);   // normalised to monthly
+console.log(summary.totalAnnualCost);
+console.log(summary.upcomingRenewals);   // renewals in next 7 days
+console.log(summary.subscriptionsByCategory);
+```
+
+### Get renewal history for a subscription
+
+```typescript
+const events = await sdk.getRenewalHistory('sub-uuid');
+for (const e of events) {
+  console.log(e.renewedAt, e.amount, e.status);
+}
+```
+
+---
+
+## Webhook Management
+
+### Create a webhook
+
+```typescript
+const webhook = await sdk.createWebhook({
+  url: 'https://yourapp.com/hooks/syncro',
+  events: ['subscription.created', 'subscription.cancelled'],
+  secret: 'your-webhook-secret',
+});
+console.log(webhook.id);
+```
+
+### List webhooks
+
+```typescript
+const webhooks = await sdk.listWebhooks();
+```
+
+### Delete a webhook
+
+```typescript
+await sdk.deleteWebhook('webhook-uuid');
+```
+
+---
+
+## Notifications
+
+### Get notifications
+
+```typescript
+// All notifications
+const all = await sdk.getNotifications();
+
+// Unread only
+const unread = await sdk.getNotifications({ unreadOnly: true });
+```
+
+### Mark a notification as read
+
+```typescript
+await sdk.markNotificationRead('notification-uuid');
+```
+
+---
+
+## Error Handling
+
+The SDK throws typed errors so you can handle them precisely:
+
+```typescript
+import {
+  SyncroError,
+  NotFoundError,
+  AuthenticationError,
+  RateLimitError,
+  ValidationError,
+} from '@syncro/sdk';
+
+try {
+  await sdk.getSubscription('bad-id');
+} catch (err) {
+  if (err instanceof NotFoundError) {
+    console.error('Not found:', err.message); // err.code === 'NOT_FOUND'
+  } else if (err instanceof AuthenticationError) {
+    console.error('Check your API key');
+  } else if (err instanceof RateLimitError) {
+    console.error(`Rate limited. Retry after ${err.retryAfter}s`);
+  } else if (err instanceof SyncroError) {
+    console.error(`SDK error [${err.code}]:`, err.message);
+  }
+}
+```
+
+---
+
+## Using Types Only (`@syncro/types`)
+
+You can import types without the runtime SDK:
+
+```typescript
+import type {
+  SubscriptionRecord,
+  CreateSubscriptionInput,
+  UpdateSubscriptionInput,
+  SubscriptionFilters,
+  PaginatedResult,
+  AnalyticsSummary,
+  RenewalEvent,
+  CreateWebhookInput,
+  Webhook,
+  AppNotification,
+} from '@syncro/sdk/types';
+```
+
+---
+
+## Event Emitter
+
+The SDK extends `EventEmitter`. Supported events:
+
+| Event | Payload |
+|---|---|
+| `ready` | `{ baseURL, publicKey }` |
+| `cancelling` | `{ subscriptionId }` |
+| `success` | `CancellationResult` |
+| `failure` | `{ subscriptionId, error }` |
+| `subscription:created` | `SubscriptionRecord` |
+| `subscription:updated` | `SubscriptionRecord` |
+| `subscription:deleted` | `{ id }` |
+| `webhook:created` | `Webhook` |
+| `webhook:deleted` | `{ id }` |
+| `notification:read` | `{ id }` |
+
+---
+
+## Configuration
+
+```typescript
+const sdk = init({
+  apiKey: 'your-api-key',            // Required
+  baseURL: 'http://localhost:3001/api', // Default
+  timeout: 30000,                    // ms, default 30s
+  enableLogging: false,              // default false
+  batchConcurrency: 5,               // default 5
+  retryOptions: {
+    maxRetries: 3,
+    initialDelayMs: 1000,
+    maxDelayMs: 30000,
+    retryableStatusCodes: [408, 429, 500, 502, 503, 504],
+  },
+});
+```
+
+---
+
+## License
+
+MIT
+Config Interface
 
 The SDK uses a strictly typed configuration object. All configuration options are validated at initialization.
 

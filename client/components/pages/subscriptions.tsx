@@ -1,10 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
- cancellation-assistant
-import { Edit2, Trash2, Mail, Clock, Copy, ShieldAlert, CheckCircle } from "lucide-react"
-
-import { Edit2, Trash2, Mail, Clock, Copy, Lock, Users, Calendar, Check } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Edit2, Trash2, Mail, Clock, Copy, Lock, Users, Calendar, Check, Download, FileText } from "lucide-react"
+import { exportAllCSV, exportActiveCSV, exportDateRangeCSV } from "@/lib/csv-export"
+import { downloadSubscriptionPDF } from "@/lib/pdf-report"
 
 import { useDebounce } from "@/hooks/use-debounce"
 import { VirtualizedList } from "@/components/ui/virtualized-list"
@@ -50,6 +49,29 @@ export default function SubscriptionsPage({
   const [sortBy, setSortBy] = useState("name")
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false)
   const [showUnusedOnly, setShowUnusedOnly] = useState(false)
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const [exportingPDF, setExportingPDF] = useState(false)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const handleExportPDF = async () => {
+    setShowExportMenu(false)
+    setExportingPDF(true)
+    try {
+      await downloadSubscriptionPDF(filtered)
+    } finally {
+      setExportingPDF(false)
+    }
+  }
 
   const [guides, setGuides] = useState<CancellationGuide[]>([])
   const [selectedSubForCancel, setSelectedSubForCancel] = useState<any | null>(null)
@@ -240,6 +262,79 @@ export default function SubscriptionsPage({
           <Calendar className="w-4 h-4" />
           Sync to Calendar
         </button>
+
+        {/* Export dropdown */}
+        <div className="relative" ref={exportMenuRef}>
+          <button
+            onClick={() => setShowExportMenu(!showExportMenu)}
+            disabled={exportingPDF}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              darkMode ? "bg-[#2D3748] text-gray-400 hover:text-white" : "bg-gray-100 text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Download className="w-4 h-4" />
+            {exportingPDF ? "Generating…" : "Export"}
+          </button>
+
+          {showExportMenu && (
+            <div
+              className={`absolute left-0 top-full mt-1 w-56 rounded-lg border shadow-lg z-50 ${
+                darkMode ? "bg-[#2D3748] border-[#374151]" : "bg-white border-gray-200"
+              }`}
+            >
+              <p className={`px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide ${darkMode ? "text-gray-500" : "text-gray-400"}`}>
+                CSV
+              </p>
+              <button
+                onClick={() => { exportAllCSV(filtered); setShowExportMenu(false) }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                  darkMode ? "text-gray-300 hover:bg-[#374151]" : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <Download className="w-3.5 h-3.5" />
+                Export current view
+              </button>
+              <button
+                onClick={() => { exportActiveCSV(subscriptions); setShowExportMenu(false) }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                  darkMode ? "text-gray-300 hover:bg-[#374151]" : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <Download className="w-3.5 h-3.5" />
+                Active subscriptions only
+              </button>
+              <button
+                onClick={() => {
+                  const now = new Date()
+                  const endOfYear = new Date(now.getFullYear(), 11, 31)
+                  exportDateRangeCSV(subscriptions, now, endOfYear)
+                  setShowExportMenu(false)
+                }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                  darkMode ? "text-gray-300 hover:bg-[#374151]" : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <Download className="w-3.5 h-3.5" />
+                Renewals this year
+              </button>
+
+              <hr className={`my-1 ${darkMode ? "border-[#374151]" : "border-gray-100"}`} />
+
+              <p className={`px-3 pt-1 pb-1 text-xs font-semibold uppercase tracking-wide ${darkMode ? "text-gray-500" : "text-gray-400"}`}>
+                PDF
+              </p>
+              <button
+                onClick={handleExportPDF}
+                className={`w-full flex items-center gap-2 px-3 py-2 pb-3 text-sm text-left transition-colors rounded-b-lg ${
+                  darkMode ? "text-gray-300 hover:bg-[#374151]" : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Full subscription report
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Search and Filters */}

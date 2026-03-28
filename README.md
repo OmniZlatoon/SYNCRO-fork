@@ -1,3 +1,5 @@
+[![TypeScript Check](https://github.com/Calebux/SYNCRO/actions/workflows/typecheck.yml/badge.svg)](https://github.com/Calebux/SYNCRO/actions/workflows/typecheck.yml)
+
 ## Synchro — Self-Custodial Subscription Manager (MVP)
 
 Synchro is a decentralized, self-custodial subscription management platform that empowers users to take full control of their recurring payments while using crypto. This MVP focuses on gift card–compatible subscriptions and optional email-based subscription detection, pending future automation with non-custodial card issuance on Stellar.

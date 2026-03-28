@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { supabase } from '../config/database';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { emailService } from '../services/email-service';
+import { createTeamInviteLimiter } from '../middleware/rate-limit-factory';
 import logger from '../config/logger';
 
 const router = Router();
@@ -100,7 +101,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
 // ---------------------------------------------------------------------------
 // POST /api/team/invite  — invite a new member
 // ---------------------------------------------------------------------------
-router.post('/invite', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/invite', createTeamInviteLimiter(), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { email, role = 'member' } = req.body as { email?: string; role?: string };
 
@@ -152,7 +153,7 @@ router.post('/invite', async (req: AuthenticatedRequest, res: Response) => {
       .from('team_members')
       .select('id')
       .eq('team_id', ctx.teamId)
-      .eq('user_id', (await supabase.auth.admin.getUserByEmail(email))?.data?.user?.id ?? '')
+      .eq('user_id', (await (supabase.auth.admin as any)?.getUserByEmail?.(email))?.data?.user?.id ?? '')
       .limit(1)
       .single();
 

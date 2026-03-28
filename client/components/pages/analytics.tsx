@@ -14,6 +14,7 @@ import {
   Cell,
 } from "recharts"
 import { Download, Calendar, BarChart3, ChevronLeft, ChevronRight } from "lucide-react"
+import { downloadSubscriptionPDF } from "@/lib/pdf-report"
 
 interface AnalyticsPageProps {
   subscriptions: any[]
@@ -81,7 +82,7 @@ export default function AnalyticsPage({ subscriptions, totalSpend, darkMode, mod
   }
 
   const handleExportPDF = async () => {
-    alert("PDF export feature coming soon! For now, use CSV export.")
+    await downloadSubscriptionPDF(subscriptions)
   }
 
   const getBusinessSubscriptions = () => {

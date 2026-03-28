@@ -90,3 +90,144 @@ export interface GiftCardEvent {
 }
 
 export type { Logger } from './logger.js';
+
+// ─────────────────────────────────────────────
+// Subscription types
+// ─────────────────────────────────────────────
+
+export type SubscriptionStatus = 'active' | 'cancelled' | 'paused' | 'trial' | 'expired';
+export type BillingCycle = 'monthly' | 'yearly' | 'quarterly';
+
+/** Full subscription object returned from the API */
+export interface SubscriptionRecord {
+  id: string;
+  user_id: string;
+  name: string;
+  provider: string;
+  price: number;
+  billing_cycle: BillingCycle;
+  status: SubscriptionStatus;
+  next_billing_date: string | null;
+  category: string | null;
+  logo_url: string | null;
+  website_url: string | null;
+  renewal_url: string | null;
+  notes: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  [key: string]: unknown;
+}
+
+/** Input for creating a new subscription */
+export interface CreateSubscriptionInput {
+  name: string;
+  price: number;
+  billing_cycle: BillingCycle;
+  provider?: string;
+  status?: SubscriptionStatus;
+  next_billing_date?: string;
+  category?: string;
+  logo_url?: string;
+  website_url?: string;
+  renewal_url?: string;
+  notes?: string;
+  tags?: string[];
+}
+
+/** Input for updating an existing subscription (all fields optional) */
+export interface UpdateSubscriptionInput {
+  name?: string;
+  price?: number;
+  billing_cycle?: BillingCycle;
+  provider?: string;
+  status?: SubscriptionStatus;
+  next_billing_date?: string;
+  category?: string;
+  logo_url?: string;
+  website_url?: string;
+  renewal_url?: string;
+  notes?: string;
+  tags?: string[];
+}
+
+/** Filters / pagination options for listing subscriptions */
+export interface SubscriptionFilters {
+  page?: number;
+  limit?: number;
+  status?: SubscriptionStatus;
+  category?: string;
+}
+
+/** Paginated API response wrapper */
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  hasMore: boolean;
+}
+
+// ─────────────────────────────────────────────
+// Analytics types
+// ─────────────────────────────────────────────
+
+export interface AnalyticsSummary {
+  totalActiveSubscriptions: number;
+  totalMonthlyCost: number;
+  totalAnnualCost: number;
+  subscriptionsByStatus: Record<SubscriptionStatus, number>;
+  subscriptionsByCategory: Record<string, number>;
+  upcomingRenewals: number;
+}
+
+export interface RenewalEvent {
+  id: string;
+  subscriptionId: string;
+  subscriptionName: string;
+  amount: number;
+  billingCycle: BillingCycle;
+  renewedAt: string;
+  status: 'success' | 'failed';
+  transactionHash?: string;
+}
+
+// ─────────────────────────────────────────────
+// Webhook types
+// ─────────────────────────────────────────────
+
+export type WebhookEvent =
+  | 'subscription.created'
+  | 'subscription.updated'
+  | 'subscription.cancelled'
+  | 'subscription.deleted'
+  | 'subscription.renewed';
+
+export interface CreateWebhookInput {
+  url: string;
+  events: WebhookEvent[];
+  secret?: string;
+}
+
+export interface Webhook {
+  id: string;
+  url: string;
+  events: WebhookEvent[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─────────────────────────────────────────────
+// Notification types
+// ─────────────────────────────────────────────
+
+export type NotificationType = 'renewal' | 'price_change' | 'duplicate' | 'trial_ending';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  subscriptionId: string | null;
+  isRead: boolean;
+  createdAt: string;
+}

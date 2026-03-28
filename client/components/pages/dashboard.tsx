@@ -2,6 +2,7 @@
 
 import { ArrowRight, Mail, Sparkles, Package } from "lucide-react"
 import { useState } from "react"
+import { formatCurrency, convertCurrency, getCurrencySymbol, type Currency } from "@/lib/currency-utils"
 
 interface DashboardPageProps {
   subscriptions: any[]
@@ -15,6 +16,9 @@ interface DashboardPageProps {
   duplicates?: any[]
   unusedSubscriptions?: any[]
   trialSubscriptions?: any[]
+  displayCurrency?: Currency
+  exchangeRates?: Record<string, number>
+  ratesStale?: boolean
 }
 
 export default function DashboardPage({
@@ -29,7 +33,19 @@ export default function DashboardPage({
   duplicates,
   unusedSubscriptions,
   trialSubscriptions,
+  displayCurrency,
+  exchangeRates,
+  ratesStale,
 }: DashboardPageProps) {
+  const dc = displayCurrency || "USD"
+  const rates = exchangeRates || {}
+
+  const convertPrice = (price: number, currency?: string) => {
+    const from = currency || "USD"
+    if (from === dc || !rates[from]) return price
+    return convertCurrency(price, from, dc, rates)
+  }
+
   const [hoveredCard, setHoveredCard] = useState(null)
   const [filterEmail, setFilterEmail] = useState("all")
   const [filterType, setFilterType] = useState("all")
@@ -53,13 +69,15 @@ export default function DashboardPage({
 
   const activeSubscriptions = filteredSubscriptions.filter((sub) => sub.status === "active").length
 
-  const filteredTotalSpend = filteredSubscriptions.reduce((sum, sub) => sum + sub.price, 0)
+  const filteredTotalSpend = filteredSubscriptions.reduce(
+    (sum, sub) => sum + convertPrice(sub.price, sub.currency), 0
+  )
 
   // Calculate AI vs Other stats
   const aiSubs = emailFiltered.filter((sub) => sub.category === "AI Tools")
   const otherSubs = emailFiltered.filter((sub) => sub.category !== "AI Tools")
-  const aiSpend = aiSubs.reduce((sum, sub) => sum + sub.price, 0)
-  const otherSpend = otherSubs.reduce((sum, sub) => sum + sub.price, 0)
+  const aiSpend = aiSubs.reduce((sum, sub) => sum + convertPrice(sub.price, sub.currency), 0)
+  const otherSpend = otherSubs.reduce((sum, sub) => sum + convertPrice(sub.price, sub.currency), 0)
 
   const hasNoSubscriptions = subscriptions.length === 0
   const hasNoResults = filteredSubscriptions.length === 0 && subscriptions.length > 0
@@ -175,7 +193,12 @@ export default function DashboardPage({
               <p className="text-gray-400 text-sm mb-1">
                 {filterEmail === "all" ? "This Month's Total Spend" : `Spend from ${filterEmail}`}
               </p>
-              <h3 className="text-4xl font-bold text-white mb-1">${filteredTotalSpend.toFixed(2)}</h3>
+              <h3 className="text-4xl font-bold text-white mb-1">
+                  {formatCurrency(filteredTotalSpend, dc)}
+                  {ratesStale && (
+                    <span className="text-xs text-gray-400 font-normal ml-2">(rates may be outdated)</span>
+                  )}
+                </h3>
               <p className="text-gray-400 text-xs">
                 {filteredSubscriptions.length} subscription{filteredSubscriptions.length !== 1 ? "s" : ""}
                 {filterEmail !== "all" && ` from this email`}
@@ -196,7 +219,7 @@ export default function DashboardPage({
                 <Sparkles className="w-3 h-3 text-[#FFD166]" />
                 <span className="text-gray-400 text-xs">AI Tools</span>
               </div>
-              <p className="text-xl font-bold text-white">${aiSpend.toFixed(2)}</p>
+              <p className="text-xl font-bold text-white">{formatCurrency(aiSpend, dc)}</p>
               <p className="text-xs text-gray-400">{aiSubs.length} subscriptions</p>
             </div>
             <div className="bg-[#2D3748] rounded-lg p-3">
@@ -204,7 +227,7 @@ export default function DashboardPage({
                 <Package className="w-3 h-3 text-[#E86A33]" />
                 <span className="text-gray-400 text-xs">Other Services</span>
               </div>
-              <p className="text-xl font-bold text-white">${otherSpend.toFixed(2)}</p>
+              <p className="text-xl font-bold text-white">{formatCurrency(otherSpend, dc)}</p>
               <p className="text-xs text-gray-400">{otherSubs.length} subscriptions</p>
             </div>
           </div>
@@ -286,7 +309,16 @@ export default function DashboardPage({
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className={`font-bold ${darkMode ? "text-white" : "text-[#1E2A35]"}`}>${sub.price}</p>
+                        <p
+                          className={`font-bold ${darkMode ? "text-white" : "text-[#1E2A35]"}`}
+                          title={
+                            sub.currency && sub.currency !== dc && rates[sub.currency]
+                              ? `${formatCurrency(sub.price, sub.currency || "USD")} = ${formatCurrency(convertPrice(sub.price, sub.currency), dc)}`
+                              : undefined
+                          }
+                        >
+                          {formatCurrency(sub.price, sub.currency || "USD")}
+                        </p>
                         <p className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>/Month</p>
                       </div>
                     </div>
@@ -437,7 +469,16 @@ export default function DashboardPage({
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className={`font-bold ${darkMode ? "text-white" : "text-[#1E2A35]"}`}>${sub.price}</p>
+                        <p
+                          className={`font-bold ${darkMode ? "text-white" : "text-[#1E2A35]"}`}
+                          title={
+                            sub.currency && sub.currency !== dc && rates[sub.currency]
+                              ? `${formatCurrency(sub.price, sub.currency || "USD")} = ${formatCurrency(convertPrice(sub.price, sub.currency), dc)}`
+                              : undefined
+                          }
+                        >
+                          {formatCurrency(sub.price, sub.currency || "USD")}
+                        </p>
                         <p className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>/Month</p>
                       </div>
                     </div>

@@ -84,6 +84,8 @@ export function AppClient({
     const [showEditSubscription, setShowEditSubscription] = useState(false);
     const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(true);
     const [currency, setCurrency] = useState<Currency>("USD");
+    const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
+    const [ratesStale, setRatesStale] = useState(false);
     const [isOffline, setIsOffline] = useState(false);
 
     // Data state
@@ -196,6 +198,27 @@ export function AppClient({
         currentPlan === "free" ? 5 : currentPlan === "pro" ? 20 : 100;
 
     // Effects
+    useEffect(() => {
+        async function fetchRates() {
+            try {
+                const response = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/exchange-rates?base=${currency}`,
+                    { credentials: 'include' }
+                );
+                if (response.ok) {
+                    const json = await response.json();
+                    if (json.success) {
+                        setExchangeRates(json.data.rates);
+                        setRatesStale(json.data.stale);
+                    }
+                }
+            } catch {
+                // Rates fetch failed — dashboard will show native currencies without conversion
+            }
+        }
+        fetchRates();
+    }, [currency]);
+
     useEffect(() => {
         setIsLoadingSubscriptions(false);
     }, []);
@@ -483,6 +506,9 @@ export function AppClient({
                                 duplicates={duplicates}
                                 unusedSubscriptions={unusedSubscriptions}
                                 trialSubscriptions={trialSubscriptions}
+                                displayCurrency={currency}
+                                exchangeRates={exchangeRates}
+                                ratesStale={ratesStale}
                             />
                         )}
                         {activeView === "subscriptions" && (

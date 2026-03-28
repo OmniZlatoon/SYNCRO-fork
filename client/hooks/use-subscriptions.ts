@@ -376,90 +376,103 @@ export function useSubscriptions({
     [subscriptions, updateSubscriptions, addToHistory, onToast]
   );
 
-  const handlePauseSubscription = useCallback(
-    async (id: number, resumeDate?: Date) => {
-      const sub = subscriptions.find((s) => s.id === id);
-      if (!sub) return;
+const handlePauseSubscription = useCallback(
+  async (id: number, resumeDate?: Date) => {
+    const sub = subscriptions.find((s) => s.id === id);
+    if (!sub) return;
 
-      try {
-        const resumesAt = resumeDate
-          ? resumeDate.toISOString()
-          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    try {
+      const resumeAt = resumeDate
+        ? resumeDate.toISOString()
+        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-        await updateSubscription(id, {
-          status: "paused",
-          paused_at: new Date().toISOString(),
-          resumes_at: resumesAt,
-        });
+      const response = await fetch(`/api/subscriptions/${id}/pause`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resumeAt, reason: "User requested pause" }),
+      });
 
-        const updatedSubs = subscriptions.map((s) =>
-          s.id === id
-            ? {
-                ...s,
-                status: "paused",
-                pausedAt: new Date().toISOString(),
-                resumesAt: resumesAt,
-              }
-            : s
-        );
-
-        updateSubscriptions(updatedSubs);
-        addToHistory(updatedSubs);
-
-        onToast({
-          title: "Subscription paused",
-          description: "The subscription has been paused",
-          variant: "success",
-        });
-      } catch (error) {
-        onToast({
-          title: "Error",
-          description: "Failed to pause subscription",
-          variant: "error",
-        });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Failed to pause subscription");
       }
-    },
-    [subscriptions, updateSubscriptions, addToHistory, onToast]
-  );
 
-  const handleResumeSubscription = useCallback(
-    async (id: number) => {
-      try {
-        await updateSubscription(id, {
-          status: "active",
-          paused_at: undefined,
-          resumes_at: undefined,
-        });
+      const updatedSubs = subscriptions.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              status: "paused",
+              pausedAt: new Date().toISOString(),
+              resumesAt: resumeAt,
+            }
+          : s
+      );
 
-        const updatedSubs = subscriptions.map((s) =>
-          s.id === id
-            ? {
-                ...s,
-                status: "active",
-                pausedAt: undefined,
-                resumesAt: undefined,
-              }
-            : s
-        );
+      updateSubscriptions(updatedSubs);
+      addToHistory(updatedSubs);
 
-        updateSubscriptions(updatedSubs);
-        addToHistory(updatedSubs);
+      onToast({
+        title: "Subscription paused",
+        description: "The subscription has been paused",
+        variant: "success",
+      });
+    } catch (error) {
+      onToast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to pause subscription",
+        variant: "error",
+      });
+    }
+  },
+  [subscriptions, updateSubscriptions, addToHistory, onToast]
+);
 
-        onToast({
-          title: "Subscription resumed",
-          description: "The subscription has been resumed",
-          variant: "success",
-        });
-      } catch (error) {
-        onToast({
-          title: "Error",
-          description: "Failed to resume subscription",
-          variant: "error",
-        });
+const handleResumeSubscription = useCallback(
+  async (id: number) => {
+    const sub = subscriptions.find((s) => s.id === id);
+    if (!sub) return;
+
+    try {
+      const response = await fetch(`/api/subscriptions/${id}/resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Failed to resume subscription");
       }
-    },
-    [subscriptions, updateSubscriptions, addToHistory, onToast]
-  );
+
+      const updatedSubs = subscriptions.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              status: "active",
+              pausedAt: undefined,
+              resumesAt: undefined,
+            }
+          : s
+      );
+
+      updateSubscriptions(updatedSubs);
+      addToHistory(updatedSubs);
+
+      onToast({
+        title: "Subscription resumed",
+        description: "The subscription has been resumed",
+        variant: "success",
+      });
+    } catch (error) {
+      onToast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to resume subscription",
+        variant: "error",
+      });
+    }
+  },
+  [subscriptions, updateSubscriptions, addToHistory, onToast]
+);
 
   const handleToggleSubscriptionSelect = useCallback((id: number) => {
     setSelectedSubscriptions((prev) => {

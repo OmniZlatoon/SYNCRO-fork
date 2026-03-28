@@ -2,7 +2,7 @@ import { Router, Response, Request } from 'express';
 import { merchantService } from '../services/merchant-service';
 import logger from '../config/logger';
 import { adminAuth } from '../middleware/admin';
-import { renewalRateLimiter } from '../middleware/rate-limiter'; // Added Import
+//import { renewalRateLimiter } from '../middleware/rate-limiter'; // Added Import
 
 const router = Router();
 
@@ -94,7 +94,7 @@ router.post('/', adminAuth, async (req: Request, res: Response) => {
  * Update merchant (Admin only)
  * NOTE: Rate limiter applied here to prevent mass renewal/update congestion per merchant.
  */
-router.patch('/:id', adminAuth, renewalRateLimiter, async (req: Request, res: Response) => {
+router.patch('/:id', adminAuth, /*renewalRateLimiter,*/ async (req: Request, res: Response) => {
     try {
         const merchant = await merchantService.updateMerchant(req.params.id as string, req.body);
 

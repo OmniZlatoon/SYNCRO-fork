@@ -1,15 +1,40 @@
 {
-  "name": "sdk",
-  "version": "1.0.0",
-  "description": "",
+  "name": "@syncro/sdk",
+  "version": "1.1.0",
+  "description": "Official SDK for the SYNCRO Subscription Management Platform",
   "type": "module",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types.js",
+      "types": "./dist/types.d.ts"
+    },
+    "./errors": {
+      "import": "./dist/errors.js",
+      "types": "./dist/errors.d.ts"
+    }
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "syncro",
+    "subscriptions",
+    "sdk"
+  ],
+  "author": "SYNCRO",
+  "license": "MIT",
   "dependencies": {
     "axios": "^1.13.5",
     "events": "^3.3.0"

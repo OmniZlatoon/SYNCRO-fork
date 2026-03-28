@@ -318,8 +318,6 @@ export function logDataExport(userId: string, format: string, recordCount: numbe
     details: { format, recordCount },
   })
 }
-  })
-}
 
 export function logTeamAction(
   userId: string,

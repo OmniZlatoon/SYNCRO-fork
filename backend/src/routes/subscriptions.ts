@@ -5,6 +5,7 @@ import { giftCardService } from '../services/gift-card-service';
 import { idempotencyService } from '../services/idempotency';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validateSubscriptionOwnership, validateBulkSubscriptionOwnership } from '../middleware/ownership';
+import { requireRole } from '../middleware/rbac';
 import logger from '../config/logger';
 
 // Zod schema for URL fields — only http/https allowed
@@ -283,7 +284,7 @@ router.patch("/:id", validateSubscriptionOwnership, async (req: AuthenticatedReq
  * DELETE /api/subscriptions/:id
  * Delete subscription
  */
-router.delete("/:id", validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
+router.delete("/:id", validateSubscriptionOwnership, requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await subscriptionService.deleteSubscription(
       req.user!.id,
@@ -670,7 +671,7 @@ router.post("/:id/resume", validateSubscriptionOwnership, async (req: Authentica
  * POST /api/subscriptions/bulk
  * Bulk operations (delete, update status, etc.)
  */
-router.post("/bulk", validateBulkSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
+router.post("/bulk", validateBulkSubscriptionOwnership, requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { operation, ids, data } = req.body;
 

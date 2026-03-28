@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { supabase } from '../config/database';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { requireRole } from '../middleware/rbac';
 import { emailService } from '../services/email-service';
 import { createTeamInviteLimiter } from '../middleware/rate-limit-factory';
 import logger from '../config/logger';
@@ -101,7 +102,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
 // ---------------------------------------------------------------------------
 // POST /api/team/invite  — invite a new member
 // ---------------------------------------------------------------------------
-router.post('/invite', createTeamInviteLimiter(), async (req: AuthenticatedRequest, res: Response) => {
+router.post('/invite', createTeamInviteLimiter(), requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { email, role = 'member' } = req.body as { email?: string; role?: string };
 
@@ -219,7 +220,7 @@ router.post('/invite', createTeamInviteLimiter(), async (req: AuthenticatedReque
 // ---------------------------------------------------------------------------
 // GET /api/team/pending  — list pending invitations
 // ---------------------------------------------------------------------------
-router.get('/pending', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/pending', requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ctx = await resolveUserTeam(req.user!.id);
 
@@ -324,7 +325,7 @@ router.post('/accept/:token', async (req: AuthenticatedRequest, res: Response) =
 // ---------------------------------------------------------------------------
 // PUT /api/team/:memberId/role  — update a member's role (owner only)
 // ---------------------------------------------------------------------------
-router.put('/:memberId/role', async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:memberId/role', requireRole('owner'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { memberId } = req.params;
     const { role } = req.body as { role?: string };
@@ -374,7 +375,7 @@ router.put('/:memberId/role', async (req: AuthenticatedRequest, res: Response) =
 // ---------------------------------------------------------------------------
 // DELETE /api/team/:memberId  — remove a team member (owner or admin)
 // ---------------------------------------------------------------------------
-router.delete('/:memberId', async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:memberId', requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { memberId } = req.params;
 

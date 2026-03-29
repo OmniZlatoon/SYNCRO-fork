@@ -3,7 +3,7 @@ import { supabase } from '../config/database';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import logger from '../config/logger';
 
-const router = Router();
+const router: Router = Router();
 
 router.use(authenticate);
 

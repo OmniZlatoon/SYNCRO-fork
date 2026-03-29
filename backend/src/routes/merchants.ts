@@ -2,9 +2,9 @@ import { Router, Response, Request } from 'express';
 import { merchantService } from '../services/merchant-service';
 import logger from '../config/logger';
 import { adminAuth } from '../middleware/admin';
-import { renewalRateLimiter } from '../middleware/rate-limiter'; // Added Import
+import { renewalRateLimiter } from '../middleware/rateLimiter'; // Added Import
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * GET /api/merchants

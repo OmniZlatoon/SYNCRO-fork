@@ -1,4 +1,3 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { renewalCooldownService } from '../src/services/renewal-cooldown-service';
 import { supabase } from '../src/config/database';
 

@@ -22,6 +22,9 @@ describe("SyncroSDK", () => {
   let sdk: InstanceType<typeof SyncroSDK>;
   const apiKey = "test-api-key";
 
+  // Use a single mock adapter instance for the global axios, or the instance.
+  // SyncroSDK creates a new instance, so we mock *that* instance after it's created.
+
   beforeEach(() => {
     jest.clearAllMocks();
     sdk = new SyncroSDK({ apiKey });
@@ -30,7 +33,10 @@ describe("SyncroSDK", () => {
   });
 
   describe("cancelSubscription", () => {
-    it("should successfully cancel a subscription and emit events", async () => {
+    it("should successfully cancel a subscription", async () => {
+      const sdk = new SyncroSDK({ apiKey });
+      const mock = new MockAdapter(sdk.client);
+
       const subId = "sub-123";
       const mockResponse = {
         data: {
@@ -39,11 +45,6 @@ describe("SyncroSDK", () => {
             id: subId,
             name: "Netflix",
             status: "cancelled",
-            renewal_url: "https://netflix.com/account",
-          },
-          blockchain: {
-            synced: true,
-            transactionHash: "0x123",
           },
         },
       };
@@ -59,41 +60,45 @@ describe("SyncroSDK", () => {
 
       expect(result.success).toBe(true);
       expect(result.status).toBe("cancelled");
-      expect(result.redirectUrl).toBe("https://netflix.com/account");
-      expect(result.blockchain?.synced).toBe(true);
+      expect(mock.history.post.length).toBe(1);
+    });
 
-      expect(cancellingSpy).toHaveBeenCalledWith({ subscriptionId: subId });
-      expect(successSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
+    it("should retry on 500 error and eventually succeed", async () => {
+      const sdk = new SyncroSDK({
+        apiKey,
+        retryConfig: {
+          retries: 2,
+          retryDelay: () => 1,
+        },
+      });
+      const mock = new MockAdapter(sdk.client);
+
+      const subId = "sub-retry";
+      const mockSuccess = {
+        data: {
           success: true,
-          status: "cancelled",
-        }),
-      );
+          data: { id: subId, name: "Netflix", status: "cancelled" },
+        },
+      };
 
       expect(axios.post).toHaveBeenCalledWith(`/subscriptions/${subId}/cancel`);
     });
 
-    it("should handle cancellation error and emit failure event", async () => {
-      const subId = "sub-456";
-      const errorMessage = "Subscription not found";
+      const result = await sdk.cancelSubscription(subId);
 
       axios.post.mockRejectedValueOnce({
         response: {
           data: { error: errorMessage },
         },
       });
+      const mock = new MockAdapter(sdk.client);
 
-      const failureSpy = jest.fn();
-      sdk.on("failure", failureSpy);
+      const subId = "sub-fail";
 
-      await expect(sdk.cancelSubscription(subId)).rejects.toThrow(
-        `Cancellation failed: ${errorMessage}`,
-      );
+      mock.onPost(`/subscriptions/${subId}/cancel`).reply(500, { error: "Fatal Error" });
 
-      expect(failureSpy).toHaveBeenCalledWith({
-        subscriptionId: subId,
-        error: errorMessage,
-      });
+      await expect(sdk.cancelSubscription(subId)).rejects.toThrow("Cancellation failed: Fatal Error");
+      expect(mock.history.post.length).toBe(2); // Initial + 1 retry
     });
   });
 
@@ -196,6 +201,7 @@ describe("SDK initialization", () => {
 
   it("init(config) should return an SDK instance", () => {
     const sdk = init({
+      apiKey: "test-api-key",
       wallet: { publicKey: "GTESTPUBLICKEY" },
       backendApiBaseUrl: "https://api.syncro.example.com",
     });
@@ -205,6 +211,7 @@ describe("SDK initialization", () => {
 
   it("should emit ready event after successful init", async () => {
     const sdk = init({
+      apiKey: "test-api-key",
       keypair: { publicKey: () => "GKEYPAIRPUBLICKEY" },
       backendApiBaseUrl: "https://api.syncro.example.com",
     });

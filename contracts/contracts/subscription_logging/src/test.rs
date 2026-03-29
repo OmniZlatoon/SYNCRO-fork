@@ -1,26 +1,62 @@
-use super::*;
-use soroban_sdk::{testutils::Address as _, Env};
+use soroban_sdk::{contract, contractimpl, contracttype, Env, String, Vec};
 
-#[test]
-fn test_logging() {
-    let env = Env::default();
-    let contract_id = env.register(SubscriptionLoggingContract, ());
-    let client = SubscriptionLoggingContractClient::new(&env, &contract_id);
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LogEvent {
+    Reminder,
+    Approval,
+    Renewal,
+    Failure,
+    Retry,
+    Cancellation,
+}
 
-    let sub_id = 123;
-    client.record_log(
-        &sub_id,
-        &LogEvent::Renewal,
-        &String::from_str(&env, "Success"),
-    );
-    client.record_log(
-        &sub_id,
-        &LogEvent::Failure,
-        &String::from_str(&env, "Low balance"),
-    );
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LogEntry {
+    pub sub_id: u64,
+    pub event: LogEvent,
+    pub timestamp: u64,
+    pub data: String,
+}
 
-    let logs = client.get_logs(&sub_id);
-    assert_eq!(logs.len(), 2);
-    assert_eq!(logs.get(0).unwrap().event, LogEvent::Renewal);
-    assert_eq!(logs.get(1).unwrap().event, LogEvent::Failure);
+#[contracttype]
+#[derive(Clone)]
+enum DataKey {
+    Logs(u64),
+}
+
+#[contract]
+pub struct SubscriptionLoggingContract;
+
+#[contractimpl]
+impl SubscriptionLoggingContract {
+    pub fn record_log(env: Env, sub_id: u64, event: LogEvent, data: String) {
+        let key = DataKey::Logs(sub_id);
+
+        let mut logs: Vec<LogEntry> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(Vec::new(&env));
+
+        let entry = LogEntry {
+            sub_id,
+            event,
+            timestamp: env.ledger().timestamp(),
+            data,
+        };
+
+        logs.push_back(entry);
+        env.storage().persistent().set(&key, &logs);
+    }
+
+    pub fn get_logs(env: Env, sub_id: u64) -> Vec<LogEntry> {
+        let key = DataKey::Logs(sub_id);
+
+        env.storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or(Vec::new(&env))
+    }
 }

@@ -65,6 +65,7 @@ impl SubscriptionRegistry {
         expected_amount: i128,
         next_renewal: u64,
     ) -> BytesN<32> {
+        user.require_auth();
         if billing_interval == 0 {
             panic!("billing_interval must be greater than 0");
         }
@@ -73,6 +74,20 @@ impl SubscriptionRegistry {
         }
         if next_renewal == 0 {
             panic!("next_renewal must be greater than 0");
+        }
+
+        let mut user_subs: Vec<BytesN<32>> = env
+            .storage()
+            .instance()
+            .get(&DataKey::UserSubscriptions(user.clone()))
+            .unwrap_or_else(|| vec![&env]);
+
+        for sub_id in user_subs.iter() {
+            if let Some(meta) = env.storage().instance().get::<_, SubscriptionMetadata>(&DataKey::Subscription(sub_id)) {
+                if meta.service_id == service_id && meta.is_active {
+                    panic!("duplicate subscription for service");
+                }
+            }
         }
 
         // Generate unique subscription ID using counter and user address
@@ -106,11 +121,6 @@ impl SubscriptionRegistry {
             .instance()
             .set(&DataKey::Subscription(subscription_id.clone()), &metadata);
 
-        let mut user_subs: Vec<BytesN<32>> = env
-            .storage()
-            .instance()
-            .get(&DataKey::UserSubscriptions(user.clone()))
-            .unwrap_or_else(|| vec![&env]);
         user_subs.push_back(subscription_id.clone());
         env.storage()
             .instance()
@@ -139,6 +149,7 @@ impl SubscriptionRegistry {
         expected_amount: Option<i128>,
         next_renewal: Option<u64>,
     ) {
+        user.require_auth();
         let mut metadata: SubscriptionMetadata = env
             .storage()
             .instance()
@@ -188,6 +199,7 @@ impl SubscriptionRegistry {
 
     /// Cancel a subscription by marking it as inactive
     pub fn cancel_subscription(env: Env, subscription_id: BytesN<32>, user: Address) {
+        user.require_auth();
         let mut metadata: SubscriptionMetadata = env
             .storage()
             .instance()

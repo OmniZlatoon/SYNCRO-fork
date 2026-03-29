@@ -2,6 +2,7 @@ import webpush from 'web-push';
 import logger from '../config/logger';
 import { NotificationPayload, DeliveryResult } from '../types/reminder';
 import { withRetry, RetryableError, NonRetryableError } from '../utils/retry';
+import { sanitizeUrl } from '../utils/sanitize-url';
 
 export interface PushSubscription {
   endpoint: string;
@@ -59,7 +60,7 @@ export class PushService {
               subscriptionId: payload.subscription.id,
               reminderType: payload.reminderType,
               renewalDate: payload.renewalDate,
-              url: payload.subscription.renewal_url || '/dashboard',
+              url: payload.subscription.renewal_url ? sanitizeUrl(payload.subscription.renewal_url) : '/dashboard',
             },
             requireInteraction: payload.reminderType === 'renewal' && payload.daysBefore <= 1,
           });
@@ -144,6 +145,47 @@ export class PushService {
    */
   getVapidPublicKey(): string {
     return this.vapidPublicKey;
+  }
+  /**
+   * Generic send method for custom notifications
+   */
+  async send(
+    pushSubscription: PushSubscription,
+    payload: { title: string; body: string; url?: string }
+  ): Promise<DeliveryResult> {
+    if (!this.vapidPublicKey || !this.vapidPrivateKey) {
+      return {
+        success: false,
+        error: 'Push service not configured',
+        metadata: { retryable: false },
+      };
+    }
+
+    try {
+      const notificationPayload = JSON.stringify({
+        title: payload.title,
+        body: payload.body,
+        icon: '/icon.svg',
+        badge: '/icon.svg',
+        data: {
+          url: payload.url || '/dashboard',
+        },
+      });
+
+      await webpush.sendNotification(pushSubscription, notificationPayload);
+
+      return {
+        success: true,
+        metadata: { timestamp: new Date().toISOString() },
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        error: errorMessage,
+        metadata: { retryable: this.isRetryableError(error) },
+      };
+    }
   }
 }
 

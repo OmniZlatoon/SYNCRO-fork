@@ -12,44 +12,17 @@ const router = Router();
 
 // All routes require authentication
 router.use(authenticate);
+import * as bip39 from 'bip39';
 
 /**
- * GET /api/subscriptions
- * List user's subscriptions with optional filtering
+ * Generates a standard BIP39 12-word mnemonic phrase.
  */
-router.get("/", async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { status, category, limit, offset } = req.query;
-
-    const result = await subscriptionService.listSubscriptions(req.user!.id, {
-      status: status as string | undefined,
-      category: category as string | undefined,
-      limit: limit ? parseInt(limit as string) : undefined,
-      offset: offset ? parseInt(offset as string) : undefined,
-    });
-
-    res.json({
-      success: true,
-      data: result.subscriptions,
-      pagination: {
-        total: result.total,
-        limit: limit ? parseInt(limit as string) : undefined,
-        offset: offset ? parseInt(offset as string) : undefined,
-      },
-    });
-  } catch (error) {
-    logger.error("List subscriptions error:", error);
-    res.status(500).json({
-      success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to list subscriptions",
-    });
-  }
-});
+export function generateMnemonic(): string {
+  return bip39.generateMnemonic(128);
+}
 
 /**
- * GET /api/subscriptions/:id
- * Get single subscription by ID
+ * Validates a given mnemonic phrase (must be 12 words).
  */
 router.get("/:id", validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -73,8 +46,10 @@ router.get("/:id", validateSubscriptionOwnership, async (req: AuthenticatedReque
       error:
         error instanceof Error ? error.message : "Failed to get subscription",
     });
+export function validateMnemonic(mnemonic: string): boolean {
+  if (!mnemonic || typeof mnemonic !== 'string') {
+    return false;
   }
-});
 
 /**
  * POST /api/subscriptions
@@ -154,8 +129,10 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
           ? error.message
           : "Failed to create subscription",
     });
+  const words = mnemonic.trim().split(/\s+/);
+  if (words.length !== 12) {
+    return false;
   }
-});
 
 /**
  * PATCH /api/subscriptions/:id
@@ -465,3 +442,5 @@ router.post("/bulk", validateBulkSubscriptionOwnership, async (req: Authenticate
 });
 
 export default router;
+  return bip39.validateMnemonic(words.join(' '));
+}

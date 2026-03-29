@@ -5,6 +5,7 @@ use subscription_registry::{SubscriptionRegistry, SubscriptionRegistryClient};
 fn test_create_subscription() {
     // Test basic subscription creation
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -40,6 +41,7 @@ fn test_create_subscription() {
 fn test_create_multiple_subscriptions() {
     // Test that a user can have multiple subscriptions
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -81,6 +83,7 @@ fn test_create_multiple_subscriptions() {
 fn test_update_subscription() {
     // Test updating subscription metadata
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -115,6 +118,7 @@ fn test_update_subscription() {
 fn test_cancel_subscription() {
     // Test canceling a subscription
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -139,6 +143,7 @@ fn test_cancel_subscription() {
 fn test_create_subscription_invalid_billing_interval() {
     // Test validation: billing interval cannot be zero
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -157,6 +162,7 @@ fn test_create_subscription_invalid_billing_interval() {
 fn test_create_subscription_negative_amount() {
     // Test validation: expected amount must be positive
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -175,6 +181,7 @@ fn test_create_subscription_negative_amount() {
 fn test_update_nonexistent_subscription() {
     // Test error handling: cannot update non-existent subscription
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -189,6 +196,7 @@ fn test_update_nonexistent_subscription() {
 fn test_cancel_already_cancelled_subscription() {
     // Test error handling: cannot cancel an already cancelled subscription
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -210,6 +218,7 @@ fn test_cancel_already_cancelled_subscription() {
 fn test_update_cancelled_subscription() {
     // Test error handling: cannot update a cancelled subscription
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -237,6 +246,7 @@ fn test_update_cancelled_subscription() {
 fn test_get_nonexistent_subscription() {
     // Test querying non-existent subscription returns None
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -249,6 +259,7 @@ fn test_get_nonexistent_subscription() {
 fn test_multiple_users_independent() {
     // Test that different users have independent subscription lists
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -285,6 +296,7 @@ fn test_multiple_users_independent() {
 fn test_subscription_id_uniqueness() {
     // Test that each subscription gets a unique ID
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(SubscriptionRegistry, ());
     let client = SubscriptionRegistryClient::new(&env, &contract_id);
 
@@ -316,4 +328,64 @@ fn test_subscription_id_uniqueness() {
     assert_ne!(sub1_id, sub2_id);
     assert_ne!(sub2_id, sub3_id);
     assert_ne!(sub1_id, sub3_id);
+}
+
+#[test]
+#[should_panic(expected = "duplicate subscription for service")]
+fn test_create_duplicate_subscription_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(SubscriptionRegistry, ());
+    let client = SubscriptionRegistryClient::new(&env, &contract_id);
+
+    let user = Address::generate(&env);
+    let service_id = String::from_str(&env, "netflix");
+
+    client.create_subscription(
+        &user,
+        &service_id,
+        &2592000u64,
+        &1599i128,
+        &1735689600u64,
+    );
+
+    // This second one should panic
+    client.create_subscription(
+        &user,
+        &service_id,
+        &2592000u64,
+        &1599i128,
+        &1735689600u64,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
+fn test_update_subscription_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(SubscriptionRegistry, ());
+    let client = SubscriptionRegistryClient::new(&env, &contract_id);
+
+    let user = Address::generate(&env);
+    let subscription_id = client.create_subscription(
+        &user,
+        &String::from_str(&env, "netflix"),
+        &2592000u64,
+        &1599i128,
+        &1735689600u64,
+    );
+
+    // Clear mock auths to simulate unauthorized user
+    env.set_auths(&[]);
+
+    // This should panic due to require_auth
+    client.update_subscription(
+        &subscription_id,
+        &user,
+        &None,
+        &None,
+        &Some(1999i128),
+        &None,
+    );
 }

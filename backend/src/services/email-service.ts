@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import logger from '../config/logger';
 import { NotificationPayload, DeliveryResult } from '../types/reminder';
 import { withRetry, RetryableError, NonRetryableError } from '../utils/retry';
+import { sanitizeUrl } from '../utils/sanitize-url';
 
 export interface EmailConfig {
   host?: string;
@@ -217,7 +218,7 @@ export class EmailService {
 
     ${subscription.renewal_url ? `
     <div style="text-align: center; margin: 30px 0;">
-      <a href="${subscription.renewal_url}" style="background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+      <a href="${sanitizeUrl(subscription.renewal_url)}" style="background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
         Manage Subscription
       </a>
     </div>
@@ -253,10 +254,193 @@ Price: $${subscription.price.toFixed(2)}/${subscription.billing_cycle}
 Renewal Date: ${renewalDateFormatted}
 ${daysBefore > 0 ? `Days Remaining: ${daysBefore}` : ''}
 
-${subscription.renewal_url ? `Manage Subscription: ${subscription.renewal_url}` : ''}
+${subscription.renewal_url ? `Manage Subscription: ${sanitizeUrl(subscription.renewal_url)}` : ''}
 
 This is an automated reminder from Synchro.
     `.trim();
+  }
+
+  /**
+   * Send a simple plain-text / HTML email.
+   * Returns a resolved promise on success; rejects on failure.
+   */
+  async sendSimpleEmail(to: string, subject: string, text: string): Promise<void> {
+    if (!this.transporter) {
+      throw new Error('Email transporter not configured');
+    }
+    await this.transporter.sendMail({
+      from: this.fromEmail,
+      to,
+      subject,
+      text,
+      html: `<p>${text}</p>`,
+    });
+    logger.info(`Simple email sent to ${to}`, { subject });
+  }
+
+  /**
+   * Send a team invitation email
+   */
+  async sendInvitationEmail(
+    recipientEmail: string,
+    payload: { inviterEmail: string; teamName: string; role: string; acceptUrl: string; expiresAt: Date }
+  ): Promise<DeliveryResult> {
+    try {
+      return await withRetry(async () => {
+        if (!this.transporter) {
+          throw new NonRetryableError('Email transporter not configured');
+        }
+
+        const subject = `You've been invited to join ${payload.teamName} on Synchro`;
+        const expiresFormatted = payload.expiresAt.toLocaleDateString('en-US', {
+          year: 'numeric', month: 'long', day: 'numeric',
+        });
+
+        const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Invitation</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+    <h1 style="color: white; margin: 0; font-size: 28px;">Team Invitation</h1>
+  </div>
+  <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+    <p><strong>${payload.inviterEmail}</strong> has invited you to join <strong>${payload.teamName}</strong> on Synchro as a <strong>${payload.role}</strong>.</p>
+    <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea;">
+      <p style="margin: 0 0 8px 0;"><strong>Team:</strong> ${payload.teamName}</p>
+      <p style="margin: 0 0 8px 0;"><strong>Role:</strong> ${payload.role}</p>
+      <p style="margin: 0;"><strong>Expires:</strong> ${expiresFormatted}</p>
+    </div>
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="${payload.acceptUrl}" style="background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+        Accept Invitation
+      </a>
+    </div>
+    <p style="color: #666; font-size: 14px; margin-top: 30px;">
+      This invitation expires on ${expiresFormatted}. If you did not expect this invitation, you can safely ignore this email.
+    </p>
+  </div>
+</body>
+</html>`.trim();
+
+        const text = `${payload.inviterEmail} has invited you to join ${payload.teamName} on Synchro as a ${payload.role}.\n\nAccept invitation: ${payload.acceptUrl}\n\nThis invitation expires on ${expiresFormatted}.`;
+
+        const info = await this.transporter.sendMail({
+          from: this.fromEmail,
+          to: recipientEmail,
+          subject,
+          html,
+          text,
+        });
+
+        logger.info(`Invitation email sent to ${recipientEmail}`, { messageId: info.messageId });
+
+        return {
+          success: true,
+          metadata: { messageId: info.messageId, accepted: info.accepted, rejected: info.rejected },
+        };
+      }, { maxAttempts: 3 });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to send invitation email to ${recipientEmail}:`, errorMessage);
+      return { success: false, error: errorMessage, metadata: { retryable: this.isRetryableError(error) } };
+    }
+  }
+  /**
+   * Send risk alert email
+   */
+  async sendRiskAlert(payload: {
+    to: string;
+    subscriptionName: string;
+    riskFactors: any[];
+    renewalDate: string;
+    recommendedAction: string;
+  }): Promise<DeliveryResult> {
+    try {
+      return await withRetry(async () => {
+        if (!this.transporter) {
+          throw new NonRetryableError('Email transporter not configured');
+        }
+
+        const subject = `⚠️ ${payload.subscriptionName} renewal at risk`;
+        const factorsText = payload.riskFactors.map(f => `- ${this.getFactorDescription(f)}`).join('\n');
+        
+        const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Risk Alert</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background: #e53e3e; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+    <h1 style="color: white; margin: 0; font-size: 28px;">Risk Alert</h1>
+  </div>
+  <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
+    <h2 style="color: #c53030;">${payload.subscriptionName} renewal at risk</h2>
+    <p>We've detected that your subscription for <strong>${payload.subscriptionName}</strong> may fail to renew soon.</p>
+    
+    <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #e53e3e;">
+      <p><strong>Risk Factors:</strong></p>
+      <ul>
+        ${payload.riskFactors.map(f => `<li>${this.getFactorDescription(f)}</li>`).join('')}
+      </ul>
+      <p><strong>Recommendation:</strong> ${payload.recommendedAction}</p>
+    </div>
+
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard" style="background: #e53e3e; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+        Review Subscription
+      </a>
+    </div>
+  </div>
+</body>
+</html>`.trim();
+
+
+        const text = `Risk Alert: ${payload.subscriptionName} renewal at risk\n\nFactors:\n${factorsText}\n\nRecommendation: ${payload.recommendedAction}`;
+
+        const info = await this.transporter.sendMail({
+          from: this.fromEmail,
+          to: payload.to,
+          subject,
+          html,
+          text,
+        });
+
+        logger.info(`Risk alert email sent to ${payload.to}`, { messageId: info.messageId });
+
+        return {
+          success: true,
+          metadata: { messageId: info.messageId },
+        };
+      }, { maxAttempts: 3 });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to send risk alert email to ${payload.to}:`, errorMessage);
+      return { success: false, error: errorMessage, metadata: { retryable: this.isRetryableError(error) } };
+    }
+  }
+
+  /**
+   * Helper to get human-readable factor description
+   */
+  private getFactorDescription(factor: any): string {
+    switch (factor.factor_type) {
+      case 'consecutive_failures':
+        return `${factor.details?.count || 0} consecutive payment failures detected`;
+      case 'balance_projection':
+        return 'Projected account balance is insufficient for next renewal';
+      case 'approval_expiration':
+        return `Payment approval expires on ${new Date(factor.details?.expires_at).toLocaleDateString()}`;
+      default:
+        return String(factor.factor_type).replace(/_/g, ' ');
+    }
   }
 }
 

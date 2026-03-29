@@ -3,6 +3,9 @@
  * Polls RPC getEvents, emits parsed events, and auto-reconnects on disconnect.
  */
 
+import type { Logger } from "./types.js";
+import { silentLogger } from "./logger.js";
+
 export interface ContractEvent {
   type: string;
   ledger: number;
@@ -60,6 +63,8 @@ export interface ListenToEventsOptions {
   maxReconnectAttempts?: number;
   /** Base delay for reconnect backoff in ms (default: 1000) */
   reconnectDelayMs?: number;
+  /** Optional signal to cancel polling or wait operations */
+  signal?: AbortSignal;
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 5000;
@@ -70,11 +75,13 @@ const MAX_BACKOFF_MS = 60000;
 export async function fetchEvents(
   rpcUrl: string,
   contractIds: string[],
-  startLedger: number
+  startLedger: number,
+  options?: { signal?: AbortSignal }
 ): Promise<ContractEvent[]> {
   const response = await fetch(rpcUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal: options?.signal || null,
     body: JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
@@ -96,10 +103,14 @@ export async function fetchEvents(
   return data.result?.events ?? [];
 }
 
-export async function getLatestLedger(rpcUrl: string): Promise<number> {
+export async function getLatestLedger(
+  rpcUrl: string,
+  options?: { signal?: AbortSignal }
+): Promise<number> {
   const response = await fetch(rpcUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal: options?.signal || null,
     body: JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
@@ -128,16 +139,17 @@ function parseEvent(
   switch (event.type) {
     case 'RenewalSuccess': {
       const v = event.value as { sub_id?: string | number; owner?: string };
+      const attemptEvent: RenewalAttemptEvent = {
+        subId: String(v.sub_id ?? ''),
+        success: true,
+        ledger: event.ledger,
+        txHash: event.txHash,
+        contractId,
+      };
+      if (v.owner !== undefined) attemptEvent.owner = v.owner;
       return {
         type: 'renewalAttempt',
-        data: {
-          subId: String(v.sub_id ?? ''),
-          success: true,
-          owner: v.owner,
-          ledger: event.ledger,
-          txHash: event.txHash,
-          contractId,
-        },
+        data: attemptEvent,
       };
     }
     case 'RenewalFailed': {
@@ -199,11 +211,17 @@ export function createEventListener(
   const reconnectDelayMs = options.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS;
   const maxReconnectAttempts =
     options.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
+  const logger = options.logger ?? silentLogger;
 
   let isRunning = true;
   let lastProcessedLedger = 0;
   let consecutiveFailures = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  logger.info("Event listener starting", {
+    contractIds: contractIds.length,
+    rpcUrl: options.rpcUrl,
+  });
 
   const stop = () => {
     isRunning = false;
@@ -211,7 +229,18 @@ export function createEventListener(
       clearTimeout(timeoutId);
       timeoutId = null;
     }
+    if (options.signal) {
+      options.signal.removeEventListener('abort', stop);
+    }
   };
+
+  if (options.signal) {
+    options.signal.addEventListener('abort', stop);
+    if (options.signal.aborted) {
+      stop();
+      return { stop };
+    }
+  }
 
   const poll = async () => {
     if (!isRunning) return;
@@ -221,7 +250,7 @@ export function createEventListener(
         lastProcessedLedger = await options.getLastLedger();
       }
 
-      const currentLedger = await getLatestLedger(options.rpcUrl);
+      const currentLedger = await getLatestLedger(options.rpcUrl, options.signal ? { signal: options.signal } : undefined);
       if (currentLedger < lastProcessedLedger) {
         lastProcessedLedger = Math.max(0, currentLedger - 1);
       }
@@ -230,13 +259,16 @@ export function createEventListener(
       const events = await fetchEvents(
         options.rpcUrl,
         contractIds,
-        fromLedger
+        fromLedger,
+        options.signal ? { signal: options.signal } : undefined
       );
 
       consecutiveFailures = 0;
 
       if (events.length > 0) {
         const maxLedger = Math.max(...events.map((e) => e.ledger));
+
+        logger.debug("Events received", { count: events.length, fromLedger, toLedger: maxLedger });
 
         for (const raw of events) {
           const parsed = parseEvent(raw);
@@ -251,13 +283,24 @@ export function createEventListener(
     } catch (err) {
       consecutiveFailures++;
       const error = err instanceof Error ? err : new Error(String(err));
+      
+      logger.warn("Event listener poll failed", {
+        attempt: consecutiveFailures,
+        maxAttempts: maxReconnectAttempts,
+        error: error.message,
+      });
+      
       onError?.(error);
 
       const backoff = Math.min(
         reconnectDelayMs * Math.pow(2, consecutiveFailures - 1),
         MAX_BACKOFF_MS
       );
+      
       if (consecutiveFailures >= maxReconnectAttempts) {
+        logger.warn("Max reconnection attempts reached, applying backoff", {
+          backoffMs: backoff,
+        });
         setTimeout(poll, backoff);
       } else {
         setTimeout(poll, pollIntervalMs);

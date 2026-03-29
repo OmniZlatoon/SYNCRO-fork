@@ -1,0 +1,4 @@
+{
+  "buildCommand": "node scripts/validate-env.js && next build",
+  "framework": "nextjs"
+}

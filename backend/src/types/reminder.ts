@@ -29,13 +29,23 @@ export interface NotificationDelivery {
 export interface Subscription {
   id: string;
   user_id: string;
+  email_account_id: string | null;
+  merchant_id: string | null;
   name: string;
-  category: string;
+  provider: string;
+  category: string | null;
   price: number;
-  active_until: string | null;
-  status: string;
   billing_cycle: string;
+  status: string;
+  next_billing_date: string | null;
+  logo_url: string | null;
+  website_url: string | null;
   renewal_url: string | null;
+  notes: string | null;
+  tags: string[];
+  expired_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface UserProfile {
@@ -74,6 +84,7 @@ export interface UserPreferences {
     auto_renew: boolean;
     auto_retry: boolean;
   };
+  risk_notification_threshold?: 'LOW' | 'MEDIUM' | 'HIGH';
   updated_at: string;
 }
 

@@ -2,10 +2,14 @@
 
 import { ArrowRight, Mail, Sparkles, Package } from "lucide-react"
 import { useState } from "react"
+import { formatCurrency, convertCurrency, getCurrencySymbol, type Currency } from "@/lib/currency-utils"
+
+import { AnalyticsSummary } from "@/lib/api/analytics"
 
 interface DashboardPageProps {
   subscriptions: any[]
   totalSpend: number
+  summary?: AnalyticsSummary
   insights: any[]
   onViewInsights: () => void
   onRenew: (subscription: any) => void
@@ -15,11 +19,15 @@ interface DashboardPageProps {
   duplicates?: any[]
   unusedSubscriptions?: any[]
   trialSubscriptions?: any[]
+  displayCurrency?: Currency
+  exchangeRates?: Record<string, number>
+  ratesStale?: boolean
 }
 
 export default function DashboardPage({
   subscriptions,
   totalSpend,
+  summary,
   insights,
   onViewInsights,
   onRenew,
@@ -29,7 +37,19 @@ export default function DashboardPage({
   duplicates,
   unusedSubscriptions,
   trialSubscriptions,
+  displayCurrency,
+  exchangeRates,
+  ratesStale,
 }: DashboardPageProps) {
+  const dc = displayCurrency || "USD"
+  const rates = exchangeRates || {}
+
+  const convertPrice = (price: number, currency?: string) => {
+    const from = currency || "USD"
+    if (from === dc || !rates[from]) return price
+    return convertCurrency(price, from, dc, rates)
+  }
+
   const [hoveredCard, setHoveredCard] = useState(null)
   const [filterEmail, setFilterEmail] = useState("all")
   const [filterType, setFilterType] = useState("all")
@@ -53,13 +73,15 @@ export default function DashboardPage({
 
   const activeSubscriptions = filteredSubscriptions.filter((sub) => sub.status === "active").length
 
-  const filteredTotalSpend = filteredSubscriptions.reduce((sum, sub) => sum + sub.price, 0)
+  const filteredTotalSpend = filteredSubscriptions.reduce(
+    (sum, sub) => sum + convertPrice(sub.price, sub.currency), 0
+  )
 
   // Calculate AI vs Other stats
   const aiSubs = emailFiltered.filter((sub) => sub.category === "AI Tools")
   const otherSubs = emailFiltered.filter((sub) => sub.category !== "AI Tools")
-  const aiSpend = aiSubs.reduce((sum, sub) => sum + sub.price, 0)
-  const otherSpend = otherSubs.reduce((sum, sub) => sum + sub.price, 0)
+  const aiSpend = aiSubs.reduce((sum, sub) => sum + convertPrice(sub.price, sub.currency), 0)
+  const otherSpend = otherSubs.reduce((sum, sub) => sum + convertPrice(sub.price, sub.currency), 0)
 
   const hasNoSubscriptions = subscriptions.length === 0
   const hasNoResults = filteredSubscriptions.length === 0 && subscriptions.length > 0
@@ -86,9 +108,10 @@ export default function DashboardPage({
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div className="flex gap-2">
+        <div className="flex gap-2" role="group" aria-label="Filter subscriptions by type">
           <button
             onClick={() => setFilterType("all")}
+            aria-pressed={filterType === "all"}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               filterType === "all"
                 ? "bg-[#FFD166] text-[#1E2A35]"
@@ -101,6 +124,7 @@ export default function DashboardPage({
           </button>
           <button
             onClick={() => setFilterType("ai")}
+            aria-pressed={filterType === "ai"}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
               filterType === "ai"
                 ? "bg-[#FFD166] text-[#1E2A35]"
@@ -109,11 +133,12 @@ export default function DashboardPage({
                   : "bg-gray-100 text-gray-600 hover:text-gray-900"
             }`}
           >
-            <Sparkles className="w-4 h-4" />
+            <Sparkles className="w-4 h-4" aria-hidden="true" />
             AI Only
           </button>
           <button
             onClick={() => setFilterType("other")}
+            aria-pressed={filterType === "other"}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
               filterType === "other"
                 ? "bg-[#FFD166] text-[#1E2A35]"
@@ -122,21 +147,29 @@ export default function DashboardPage({
                   : "bg-gray-100 text-gray-600 hover:text-gray-900"
             }`}
           >
-            <Package className="w-4 h-4" />
+            <Package className="w-4 h-4" aria-hidden="true" />
             Other Services
           </button>
         </div>
 
         <div className="flex gap-3">
+          <label htmlFor="dashboard-search" className="sr-only">Search subscriptions</label>
           <input
-            type="text"
+            id="dashboard-search"
+            type="search"
             placeholder="Search subscriptions..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            aria-label="Search subscriptions"
             className={`px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD166] ${
               darkMode ? "bg-[#2D3748] border-gray-700 text-white" : "bg-white border-gray-300 text-gray-900"
             }`}
           />
+          {searchTerm && (
+            <span role="status" aria-live="polite" className="sr-only">
+              Showing {filteredSubscriptions.length} of {subscriptions.length} subscriptions
+            </span>
+          )}
 
           {emailAccountsList.length > 1 && (
             <select
@@ -164,7 +197,12 @@ export default function DashboardPage({
               <p className="text-gray-400 text-sm mb-1">
                 {filterEmail === "all" ? "This Month's Total Spend" : `Spend from ${filterEmail}`}
               </p>
-              <h3 className="text-4xl font-bold text-white mb-1">${filteredTotalSpend.toFixed(2)}</h3>
+              <h3 className="text-4xl font-bold text-white mb-1">
+                  {formatCurrency(filteredTotalSpend, dc)}
+                  {ratesStale && (
+                    <span className="text-xs text-gray-400 font-normal ml-2">(rates may be outdated)</span>
+                  )}
+                </h3>
               <p className="text-gray-400 text-xs">
                 {filteredSubscriptions.length} subscription{filteredSubscriptions.length !== 1 ? "s" : ""}
                 {filterEmail !== "all" && ` from this email`}
@@ -185,7 +223,7 @@ export default function DashboardPage({
                 <Sparkles className="w-3 h-3 text-[#FFD166]" />
                 <span className="text-gray-400 text-xs">AI Tools</span>
               </div>
-              <p className="text-xl font-bold text-white">${aiSpend.toFixed(2)}</p>
+              <p className="text-xl font-bold text-white">{formatCurrency(aiSpend, dc)}</p>
               <p className="text-xs text-gray-400">{aiSubs.length} subscriptions</p>
             </div>
             <div className="bg-[#2D3748] rounded-lg p-3">
@@ -193,12 +231,33 @@ export default function DashboardPage({
                 <Package className="w-3 h-3 text-[#E86A33]" />
                 <span className="text-gray-400 text-xs">Other Services</span>
               </div>
-              <p className="text-xl font-bold text-white">${otherSpend.toFixed(2)}</p>
+              <p className="text-xl font-bold text-white">{formatCurrency(otherSpend, dc)}</p>
               <p className="text-xs text-gray-400">{otherSubs.length} subscriptions</p>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Budget Overview Widget */}
+      {summary?.budget_status?.overall_limit ? (
+        <div className={`${darkMode ? "bg-[#2D3748] border-[#374151]" : "bg-white border-gray-200"} border rounded-xl p-5 mb-8`}>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className={`text-sm font-semibold ${darkMode ? "text-white" : "text-gray-900"}`}>Overall Budget Status</h3>
+            <span className={`text-sm font-bold ${summary.budget_status.percentage > 90 ? "text-red-500" : "text-green-500"}`}>
+              ${summary.budget_status.current_spend.toFixed(0)} / ${summary.budget_status.overall_limit.toFixed(0)}
+            </span>
+          </div>
+          <div className={`w-full ${darkMode ? "bg-[#1E2A35]" : "bg-gray-100"} rounded-full h-2`}>
+            <div 
+              className={`h-2 rounded-full transition-all duration-500 ${summary.budget_status.percentage > 90 ? "bg-red-500" : summary.budget_status.percentage > 70 ? "bg-yellow-500" : "bg-green-500"}`}
+              style={{ width: `${Math.min(summary.budget_status.percentage, 100)}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">
+            You have used {summary.budget_status.percentage.toFixed(1)}% of your monthly budget.
+          </p>
+        </div>
+      ) : null}
 
       {hasNoResults && (
         <div className="flex flex-col items-center justify-center py-12">
@@ -244,13 +303,13 @@ export default function DashboardPage({
                     onMouseLeave={() => setHoveredCard(null)}
                   >
                     {sub.isTrial && (
-                      <div className="absolute top-3 right-3 bg-[#007A5C] text-white text-xs px-2 py-1 rounded-full font-semibold">
+                      <div aria-hidden="true" className="absolute top-3 right-3 bg-[#007A5C] text-white text-xs px-2 py-1 rounded-full font-semibold">
                         Trial
                       </div>
                     )}
 
                     {sub.priceChange && (
-                      <div className="absolute top-3 right-3 bg-[#E86A33] text-white text-xs px-2 py-1 rounded-full font-semibold">
+                      <div aria-hidden="true" className="absolute top-3 right-3 bg-[#E86A33] text-white text-xs px-2 py-1 rounded-full font-semibold">
                         Price ↑
                       </div>
                     )}
@@ -258,6 +317,7 @@ export default function DashboardPage({
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div
+                          aria-hidden="true"
                           className={`w-12 h-12 ${darkMode ? "bg-[#1E2A35]" : "bg-[#1E2A35]"} rounded-lg flex items-center justify-center text-2xl flex-shrink-0`}
                         >
                           {sub.icon}
@@ -267,14 +327,23 @@ export default function DashboardPage({
                           <p className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{sub.category}</p>
                           {sub.email && (
                             <div className="flex items-center gap-1 mt-1">
-                              <Mail className={`w-3 h-3 ${darkMode ? "text-gray-500" : "text-gray-400"}`} />
+                              <Mail aria-hidden="true" className={`w-3 h-3 ${darkMode ? "text-gray-500" : "text-gray-400"}`} />
                               <p className={`text-xs ${darkMode ? "text-gray-500" : "text-gray-400"}`}>{sub.email}</p>
                             </div>
                           )}
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className={`font-bold ${darkMode ? "text-white" : "text-[#1E2A35]"}`}>${sub.price}</p>
+                        <p
+                          className={`font-bold ${darkMode ? "text-white" : "text-[#1E2A35]"}`}
+                          title={
+                            sub.currency && sub.currency !== dc && rates[sub.currency]
+                              ? `${formatCurrency(sub.price, sub.currency || "USD")} = ${formatCurrency(convertPrice(sub.price, sub.currency), dc)}`
+                              : undefined
+                          }
+                        >
+                          {formatCurrency(sub.price, sub.currency || "USD")}
+                        </p>
                         <p className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>/Month</p>
                       </div>
                     </div>
@@ -346,6 +415,7 @@ export default function DashboardPage({
                         </div>
                         <div className={`w-full ${darkMode ? "bg-[#374151]" : "bg-gray-200"} rounded-full h-1`}>
                           <div
+                            aria-hidden="true"
                             className={`h-1 rounded-full ${sub.status === "expiring" ? "bg-[#E86A33]" : sub.status === "trial" ? "bg-[#007A5C]" : "bg-[#007A5C]"}`}
                             style={{ width: "75%" }}
                           ></div>
@@ -354,9 +424,8 @@ export default function DashboardPage({
 
                       <button
                         onClick={() => (sub.status === "expiring" ? onRenew(sub) : onManage(sub))}
-                        className={`w-full py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          hoveredCard === sub.id ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-                        } ${
+                        aria-label={sub.status === "expiring" ? `Renew ${sub.name}` : `Manage ${sub.name} subscription`}
+                        className={`w-full py-2 rounded-lg text-sm font-medium transition-all duration-200 opacity-0 group-hover:opacity-100 focus:opacity-100 ${
                           sub.status === "expiring"
                             ? darkMode
                               ? "bg-[#E86A33]/20 text-[#E86A33] hover:bg-[#E86A33]/30"
@@ -394,13 +463,13 @@ export default function DashboardPage({
                     onMouseLeave={() => setHoveredCard(null)}
                   >
                     {sub.isTrial && (
-                      <div className="absolute top-3 right-3 bg-[#007A5C] text-white text-xs px-2 py-1 rounded-full font-semibold">
+                      <div aria-hidden="true" className="absolute top-3 right-3 bg-[#007A5C] text-white text-xs px-2 py-1 rounded-full font-semibold">
                         Trial
                       </div>
                     )}
 
                     {sub.priceChange && (
-                      <div className="absolute top-3 right-3 bg-[#E86A33] text-white text-xs px-2 py-1 rounded-full font-semibold">
+                      <div aria-hidden="true" className="absolute top-3 right-3 bg-[#E86A33] text-white text-xs px-2 py-1 rounded-full font-semibold">
                         Price ↑
                       </div>
                     )}
@@ -408,6 +477,7 @@ export default function DashboardPage({
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div
+                          aria-hidden="true"
                           className={`w-12 h-12 ${darkMode ? "bg-[#1E2A35]" : "bg-[#1E2A35]"} rounded-lg flex items-center justify-center text-2xl flex-shrink-0`}
                         >
                           {sub.icon}
@@ -417,14 +487,23 @@ export default function DashboardPage({
                           <p className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>{sub.category}</p>
                           {sub.email && (
                             <div className="flex items-center gap-1 mt-1">
-                              <Mail className={`w-3 h-3 ${darkMode ? "text-gray-500" : "text-gray-400"}`} />
+                              <Mail aria-hidden="true" className={`w-3 h-3 ${darkMode ? "text-gray-500" : "text-gray-400"}`} />
                               <p className={`text-xs ${darkMode ? "text-gray-500" : "text-gray-400"}`}>{sub.email}</p>
                             </div>
                           )}
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className={`font-bold ${darkMode ? "text-white" : "text-[#1E2A35]"}`}>${sub.price}</p>
+                        <p
+                          className={`font-bold ${darkMode ? "text-white" : "text-[#1E2A35]"}`}
+                          title={
+                            sub.currency && sub.currency !== dc && rates[sub.currency]
+                              ? `${formatCurrency(sub.price, sub.currency || "USD")} = ${formatCurrency(convertPrice(sub.price, sub.currency), dc)}`
+                              : undefined
+                          }
+                        >
+                          {formatCurrency(sub.price, sub.currency || "USD")}
+                        </p>
                         <p className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>/Month</p>
                       </div>
                     </div>
@@ -472,6 +551,7 @@ export default function DashboardPage({
                         </div>
                         <div className={`w-full ${darkMode ? "bg-[#374151]" : "bg-gray-200"} rounded-full h-1`}>
                           <div
+                            aria-hidden="true"
                             className={`h-1 rounded-full ${sub.status === "expiring" ? "bg-[#E86A33]" : sub.status === "trial" ? "bg-[#007A5C]" : "bg-[#007A5C]"}`}
                             style={{ width: "75%" }}
                           ></div>
@@ -480,9 +560,8 @@ export default function DashboardPage({
 
                       <button
                         onClick={() => (sub.status === "expiring" ? onRenew(sub) : onManage(sub))}
-                        className={`w-full py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          hoveredCard === sub.id ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-                        } ${
+                        aria-label={sub.status === "expiring" ? `Renew ${sub.name}` : `Manage ${sub.name} subscription`}
+                        className={`w-full py-2 rounded-lg text-sm font-medium transition-all duration-200 opacity-0 group-hover:opacity-100 focus:opacity-100 ${
                           sub.status === "expiring"
                             ? darkMode
                               ? "bg-[#E86A33]/20 text-[#E86A33] hover:bg-[#E86A33]/30"

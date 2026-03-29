@@ -42,8 +42,6 @@ CREATE INDEX idx_renewal_approvals_sub_id ON renewal_approvals(blockchain_sub_id
 ALTER TABLE subscriptions 
 ADD COLUMN IF NOT EXISTS blockchain_sub_id BIGINT,
 ADD COLUMN IF NOT EXISTS failure_count INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS executor_address VARCHAR(56),
-ADD COLUMN IF NOT EXISTS billing_start_timestamp TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS billing_end_timestamp TIMESTAMP WITH TIME ZONE;
+ADD COLUMN IF NOT EXISTS executor_address VARCHAR(56);
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_blockchain_sub_id ON subscriptions(blockchain_sub_id);

@@ -2,13 +2,7 @@ import logger from '../config/logger';
 import { supabase } from '../config/database';
 import { reorgHandler } from './reorg-handler';
 import { generateCycleId } from '../utils/cycle-id';
-
-export const LIFECYCLE_COLUMN_MAP: Record<number, string> = {
-  1: 'blockchain_created_at',
-  2: 'blockchain_activated_at',
-  3: 'blockchain_last_renewed_at',
-  4: 'blockchain_canceled_at',
-};
+import { renewalCooldownService } from './renewal-cooldown-service';
 
 interface ContractEvent {
   type: string;
@@ -131,10 +125,9 @@ export class EventListener {
       StateTransition: this.handleStateTransition.bind(this),
       ApprovalCreated: this.handleApprovalCreated.bind(this),
       ApprovalRejected: this.handleApprovalRejected.bind(this),
+      ExecutorAssigned: this.handleExecutorAssigned.bind(this),
+      ExecutorRemoved: this.handleExecutorRemoved.bind(this),
       DuplicateRenewalRejected: this.handleDuplicateRenewalRejected.bind(this),
-      RenewalLockAcquired: this.handleRenewalLockAcquired.bind(this),
-      RenewalLockReleased: this.handleRenewalLockReleased.bind(this),
-      RenewalLockExpired: this.handleRenewalLockExpired.bind(this),
       LifecycleTimestampUpdated: this.handleLifecycleTimestampUpdated.bind(this),
     };
 
@@ -147,7 +140,7 @@ export class EventListener {
     // Fetch the subscription to get next_billing_date for cycle_id
     const { data: sub } = await supabase
       .from('subscriptions')
-      .select('next_billing_date')
+      .select('id, next_billing_date')
       .eq('blockchain_sub_id', sub_id)
       .single();
 
@@ -155,6 +148,7 @@ export class EventListener {
       status: 'active',
       last_payment_date: new Date().toISOString(),
       failure_count: 0,
+      last_renewal_attempt_at: new Date().toISOString(), // Record successful renewal attempt
     };
 
     if (sub?.next_billing_date) {
@@ -165,6 +159,21 @@ export class EventListener {
       .from('subscriptions')
       .update(updateData)
       .eq('blockchain_sub_id', sub_id);
+
+    // Record the renewal attempt in the tracking table
+    if (sub?.id) {
+      try {
+        await renewalCooldownService.recordRenewalAttempt(
+          sub.id,
+          true,
+          undefined,
+          'automatic'
+        );
+      } catch (recordError) {
+        logger.warn('Failed to record renewal attempt success:', recordError);
+        // Don't throw - the main operation succeeded
+      }
+    }
 
     return {
       sub_id,
@@ -178,13 +187,38 @@ export class EventListener {
   private async handleRenewalFailed(event: ContractEvent): Promise<ProcessedEvent | null> {
     const { sub_id, failure_count } = event.value;
 
+    // Fetch subscription ID for cooldown tracking
+    const { data: sub } = await supabase
+      .from('subscriptions')
+      .select('id')
+      .eq('blockchain_sub_id', sub_id)
+      .single();
+
+    const updateData: Record<string, any> = {
+      status: 'retrying',
+      failure_count,
+      last_renewal_attempt_at: new Date().toISOString(), // Record failed renewal attempt
+    };
+
     await supabase
       .from('subscriptions')
-      .update({
-        status: 'retrying',
-        failure_count,
-      })
+      .update(updateData)
       .eq('blockchain_sub_id', sub_id);
+
+    // Record the renewal attempt in the tracking table
+    if (sub?.id) {
+      try {
+        await renewalCooldownService.recordRenewalAttempt(
+          sub.id,
+          false,
+          `Renewal failed on blockchain (failure count: ${failure_count})`,
+          'automatic'
+        );
+      } catch (recordError) {
+        logger.warn('Failed to record renewal attempt failure:', recordError);
+        // Don't throw - the main operation succeeded
+      }
+    }
 
     return {
       sub_id,
@@ -269,6 +303,14 @@ export class EventListener {
     return {
       sub_id,
       event_type: 'duplicate_renewal_rejected',
+  private async handleExecutorAssigned(event: ContractEvent): Promise<ProcessedEvent | null> {
+    const { sub_id, executor } = event.value;
+    
+    await supabase
+      .from('subscriptions')
+      .update({ executor_address: executor })
+      .eq('blockchain_sub_id', sub_id);
+      event_type: 'executor_assigned',
       ledger: event.ledger,
       tx_hash: event.txHash,
       event_data: event.value,
@@ -283,6 +325,14 @@ export class EventListener {
     return {
       sub_id,
       event_type: 'renewal_lock_acquired',
+  private async handleExecutorRemoved(event: ContractEvent): Promise<ProcessedEvent | null> {
+    const { sub_id } = event.value;
+    
+    await supabase
+      .from('subscriptions')
+      .update({ executor_address: null })
+      .eq('blockchain_sub_id', sub_id);
+      event_type: 'executor_removed',
       ledger: event.ledger,
       tx_hash: event.txHash,
       event_data: event.value,
@@ -341,6 +391,7 @@ export class EventListener {
       event_data: event.value,
     };
   }
+  // Duplicate handlers removed below in favor of consolidated implementations later in the file
 
   private async saveEvents(events: ProcessedEvent[]) {
     const { error } = await supabase
@@ -391,6 +442,52 @@ export class EventListener {
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
+
+  private async handleDuplicateRenewalRejected(event: ContractEvent): Promise<ProcessedEvent | null> {
+    const { sub_id, cycle_id } = event.value;
+    logger.warn('Duplicate renewal rejected', { sub_id, cycle_id, ledger: event.ledger });
+    return {
+      sub_id,
+      event_type: 'duplicate_renewal_rejected',
+      ledger: event.ledger,
+      tx_hash: event.txHash,
+      event_data: event.value,
+    };
+  }
+
+  private async handleLifecycleTimestampUpdated(event: ContractEvent): Promise<ProcessedEvent | null> {
+    const { sub_id, event_kind, timestamp } = event.value;
+    const column = LIFECYCLE_COLUMN_MAP[event_kind as number];
+
+    if (!column) {
+      logger.warn('Unknown lifecycle event_kind', { event_kind });
+      return null;
+    }
+
+    const { error } = await supabase
+      .from('subscriptions')
+      .update({ [column]: timestamp })
+      .eq('blockchain_sub_id', sub_id);
+
+    if (error) {
+      logger.error('Failed to update lifecycle timestamp', { error, sub_id, column });
+    }
+
+    return {
+      sub_id,
+      event_type: 'lifecycle_timestamp_updated',
+      ledger: event.ledger,
+      tx_hash: event.txHash,
+      event_data: event.value,
+    };
+  }
 }
+
+export const LIFECYCLE_COLUMN_MAP: Record<number, string> = {
+  1: 'blockchain_created_at',
+  2: 'blockchain_activated_at',
+  3: 'blockchain_last_renewed_at',
+  4: 'blockchain_canceled_at',
+};
 
 export const eventListener = new EventListener();

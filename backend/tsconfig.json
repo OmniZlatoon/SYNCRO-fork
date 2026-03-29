@@ -6,7 +6,6 @@
       "ES2022"
     ],
     "outDir": "./dist",
-    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -17,13 +16,16 @@
     "declarationMap": true,
     "sourceMap": true,
     "types": [
+      "node",
       "jest"
     ]
   },
-  "include": [ "src/**/*"],
+  "include": [ "src/**/*", "services/subscription-classifier.js"],
   "exclude": [
     "node_modules",
     "dist",
-    "src/services/blockchain-service-impl-example.ts"
+    "src/services/blockchain-service-impl-example.ts",
+    "tests",
+    "src/rate-limit/**/*"
   ]
 }

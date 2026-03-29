@@ -1,8 +1,6 @@
-#![no_std]
-
 use soroban_sdk::{
     contract, contractimpl, contracttype, contractevent,
-    Address, Env, Symbol, Vec
+    Address, Env, Symbol,
 };
 
 #[contracttype]
@@ -56,10 +54,7 @@ impl SubscriptionRenewal {
             .instance()
             .set(&DataKey::Subscription(subscriber.clone()), &subscription);
 
-        env.events().publish(
-            (Symbol::new(&env, "subscription_created"),),
-            SubscriptionCreated { subscriber, plan_id },
-        );
+        SubscriptionCreated { subscriber, plan_id }.publish(&env);
     }
 
     pub fn renew_subscription(env: Env, subscriber: Address) {
@@ -80,10 +75,7 @@ impl SubscriptionRenewal {
 
         env.storage().instance().set(&key, &subscription);
 
-        env.events().publish(
-            (Symbol::new(&env, "subscription_renewed"),),
-            SubscriptionRenewed { subscriber },
-        );
+        SubscriptionRenewed { subscriber }.publish(&env);
     }
 
     pub fn get_subscription(env: Env, subscriber: Address) -> Subscription {
@@ -93,6 +85,3 @@ impl SubscriptionRenewal {
             .unwrap()
     }
 }
-
-#[cfg(test)]
-mod test;

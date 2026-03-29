@@ -99,3 +99,5 @@ temp/
 coverage/
 *.claude
 CLAUDE.md
+
+!backend/package-lock.json

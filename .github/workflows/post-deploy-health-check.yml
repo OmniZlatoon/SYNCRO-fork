@@ -1,0 +1,69 @@
+name: Post-Deploy Health Check
+
+on:
+  deployment_status:
+
+jobs:
+  smoke-test:
+    name: Smoke Test
+    if: github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Wait for deployment to stabilize
+        run: sleep 10
+
+      - name: Check main page returns 200
+        run: |
+          URL="${{ github.event.deployment_status.target_url }}"
+          echo "Checking: $URL"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL")
+          if [ "$STATUS" != "200" ]; then
+            echo "ERROR: Main page returned HTTP $STATUS"
+            exit 1
+          fi
+          echo "Main page OK (HTTP $STATUS)"
+
+      - name: Check /api/health returns 200
+        run: |
+          URL="${{ github.event.deployment_status.target_url }}"
+          echo "Checking: $URL/api/health"
+          API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL/api/health")
+          if [ "$API_STATUS" != "200" ]; then
+            echo "ERROR: /api/health returned HTTP $API_STATUS"
+            exit 1
+          fi
+          echo "API health check OK (HTTP $API_STATUS)"
+
+      - name: Comment on PR if health check fails
+        if: failure() && github.event.deployment_status.environment == 'Preview'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: context.payload.deployment.ref,
+            });
+            if (prs.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prs[0].number,
+                body: `⚠️ Post-deployment health check failed for preview: ${{ github.event.deployment_status.target_url }}\n\nThe app may not be working correctly. Please check the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`,
+              });
+            }
+
+      - name: Notify on production failure
+        if: failure() && github.event.deployment_status.environment == 'Production'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Production health check failed',
+              body: `Post-deployment health check failed for production deployment.\n\n**URL:** ${{ github.event.deployment_status.target_url }}\n**Workflow run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nPlease investigate immediately.`,
+              labels: ['bug', 'production'],
+            });

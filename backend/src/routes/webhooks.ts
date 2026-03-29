@@ -19,15 +19,33 @@ const webhookEventSchema = z.enum([
 ]);
 
 const createWebhookSchema = z.object({
-  url: z.string().url(),
-  events: z.array(webhookEventSchema).min(1),
+  url: z
+    .string()
+    .max(2000, 'URL must not exceed 2000 characters')
+    .url('Must be a valid URL')
+    .refine(
+      (val) => { try { const { protocol } = new URL(val); return protocol === 'http:' || protocol === 'https:'; } catch { return false; } },
+      { message: 'URL must use http or https protocol' }
+    ),
+  events: z.array(webhookEventSchema).min(1, 'At least one event type is required').max(6, 'Maximum 6 event types per webhook'),
+  description: z.string().max(255, 'Description must not exceed 255 characters').optional(),
 });
 
 const updateWebhookSchema = z.object({
-  url: z.string().url().optional(),
-  events: z.array(webhookEventSchema).min(1).optional(),
+  url: z
+    .string()
+    .max(2000, 'URL must not exceed 2000 characters')
+    .url('Must be a valid URL')
+    .refine(
+      (val) => { try { const { protocol } = new URL(val); return protocol === 'http:' || protocol === 'https:'; } catch { return false; } },
+      { message: 'URL must use http or https protocol' }
+    )
+    .optional(),
+  events: z.array(webhookEventSchema).min(1, 'At least one event type is required').max(6, 'Maximum 6 event types per webhook').optional(),
   enabled: z.boolean().optional(),
+  description: z.string().max(255, 'Description must not exceed 255 characters').optional(),
 });
+
 
 /**
  * POST /api/webhooks

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { supabase } from '../config/database';
 import logger from '../config/logger';
@@ -6,20 +7,105 @@ import { setRequestUserId } from './requestContext';
 export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
-    email: string;
+    email?: string;
+    authMethod?: 'jwt' | 'api_key';
+    scopes?: string[];
   };
+}
+
+const API_KEY_SCOPES = new Set([
+  'subscriptions:read',
+  'subscriptions:write',
+  'webhooks:write',
+  'analytics:read',
+]);
+
+export function requireScope(requiredScope: string | string[]) {
+  const requiredScopes = Array.isArray(requiredScope) ? requiredScope : [requiredScope];
+
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Authentication required' });
+      return;
+    }
+
+    if (req.user.authMethod === 'api_key') {
+      const keyScopes = req.user.scopes || [];
+      const missing = requiredScopes.filter((scope) => !keyScopes.includes(scope));
+
+      if (missing.length > 0) {
+        res.status(403).json({
+          error: 'Forbidden',
+          message: `API key missing required scopes: ${missing.join(', ')}`,
+        });
+        return;
+      }
+    }
+
+    next();
+  };
+}
+
+async function authenticateWithApiKey(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<boolean> {
+  const apiKey = req.headers['x-api-key'] as string;
+
+  if (!apiKey) {
+    return false;
+  }
+
+  const hash = crypto.createHash('sha256').update(apiKey).digest('hex');
+
+  const { data: keyRecord, error } = await supabase
+    .from('api_keys')
+    .select('user_id, scopes, revoked, last_used_at, request_count')
+    .eq('key_hash', hash)
+    .eq('revoked', false)
+    .single();
+
+  if (error || !keyRecord) {
+    res.status(401).json({ error: 'Invalid API key' });
+    return true;
+  }
+
+  // Update last_used_at and request_count
+  await supabase
+    .from('api_keys')
+    .update({
+      last_used_at: new Date().toISOString(),
+      request_count: (keyRecord.request_count ?? 0) + 1,
+    })
+    .eq('key_hash', hash);
+
+  req.user = {
+    id: keyRecord.user_id,
+    authMethod: 'api_key',
+    scopes: Array.isArray(keyRecord.scopes) ? keyRecord.scopes : [],
+  };
+
+  setRequestUserId(keyRecord.user_id);
+  next();
+  return true;
 }
 
 /**
  * Authentication middleware
- * Supports both JWT tokens (Bearer) and HTTP-only cookies
+ * Supports API key (x-api-key) and JWT tokens (Bearer and cookie)
  */
 export async function authenticate(
   req: AuthenticatedRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> {
   try {
+    const apiKeyAttempted = await authenticateWithApiKey(req, res, next);
+    if (apiKeyAttempted) {
+      return;
+    }
+
     // Try to get token from Authorization header (Bearer token)
     const authHeader = req.headers.authorization;
     let token: string | null = null;
@@ -27,7 +113,6 @@ export async function authenticate(
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.substring(7);
     } else if (req.cookies?.authToken) {
-      // Fallback to cookie-based auth
       token = req.cookies.authToken;
     }
 
@@ -55,6 +140,8 @@ export async function authenticate(
     req.user = {
       id: user.id,
       email: user.email || '',
+      authMethod: 'jwt',
+      scopes: Array.from(API_KEY_SCOPES),
     };
     setRequestUserId(user.id);
 
@@ -75,9 +162,14 @@ export async function authenticate(
 export async function optionalAuthenticate(
   req: AuthenticatedRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> {
   try {
+    const apiKeyAttempted = await authenticateWithApiKey(req, res, next);
+    if (apiKeyAttempted) {
+      return;
+    }
+
     const authHeader = req.headers.authorization;
     let token: string | null = null;
 
@@ -93,6 +185,8 @@ export async function optionalAuthenticate(
         req.user = {
           id: user.id,
           email: user.email || '',
+          authMethod: 'jwt',
+          scopes: Array.from(API_KEY_SCOPES),
         };
         setRequestUserId(user.id);
       }
@@ -104,3 +198,4 @@ export async function optionalAuthenticate(
     next();
   }
 }
+

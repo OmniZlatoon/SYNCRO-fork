@@ -5,7 +5,7 @@ import { subscriptionService } from '../services/subscription-service';
 import { giftCardService } from '../services/gift-card-service';
 import { idempotencyService } from '../services/idempotency';
 import { notificationPreferenceService } from '../services/notification-preference-service';
-import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { authenticate, AuthenticatedRequest, requireScope } from '../middleware/auth';
 import { validateSubscriptionOwnership, validateBulkSubscriptionOwnership } from '../middleware/ownership';
 import { auditService } from '../services/audit-service';
 import { previewImport, commitImport, CSV_TEMPLATE } from '../services/csv-import-service';
@@ -93,7 +93,7 @@ router.use(authenticate);
  * GET /api/subscriptions
  * List user's subscriptions with optional filtering
  */
-router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/', requireScope('subscriptions:read'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { status, category, limit, offset } = req.query as Record<string, unknown>;
 
@@ -129,7 +129,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
  * GET /api/subscriptions/:id
  * Get single subscription by ID
  */
-router.get('/:id', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id', requireScope('subscriptions:read'), validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const subscription = await subscriptionService.getSubscription(
       req.user!.id,
@@ -152,7 +152,7 @@ router.get('/:id', validateSubscriptionOwnership, async (req: AuthenticatedReque
  * POST /api/subscriptions
  * Create new subscription with idempotency support
  */
-router.post('/', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', requireScope('subscriptions:write'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const idempotencyKey = req.headers['idempotency-key'] as string;
     const requestHash = idempotencyService.hashRequest(req.body);
@@ -233,7 +233,7 @@ router.post('/', async (req: AuthenticatedRequest, res: Response) => {
  * PATCH /api/subscriptions/:id
  * Update subscription with optimistic locking
  */
-router.patch('/:id', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
+router.patch('/:id', requireScope('subscriptions:write'), validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const idempotencyKey = req.headers['idempotency-key'] as string;
     const requestHash = idempotencyService.hashRequest(req.body);
@@ -307,7 +307,7 @@ router.patch('/:id', validateSubscriptionOwnership, async (req: AuthenticatedReq
  * DELETE /api/subscriptions/:id
  * Delete subscription
  */
-router.delete('/:id', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', requireScope('subscriptions:write'), validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await subscriptionService.deleteSubscription(
       req.user!.id,

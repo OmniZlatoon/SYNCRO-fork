@@ -18,6 +18,7 @@ import teamRoutes from './routes/team';
 import auditRoutes from './routes/audit';
 import webhookRoutes from './routes/webhooks';
 import tagsRoutes from './routes/tags';
+import apiKeysRoutes from './routes/api-keys';
 import { createExchangeRatesRouter } from './routes/exchange-rates';
 import { ExchangeRateService } from './services/exchange-rate/exchange-rate-service';
 import { FiatRateProvider } from './services/exchange-rate/fiat-provider';
@@ -69,6 +70,7 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+app.use('/api/keys', apiKeysRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/risk-score', riskScoreRoutes);
 app.use('/api/simulation', simulationRoutes);
@@ -128,8 +130,6 @@ app.get('/api/admin/health', createAdminLimiter(), adminAuth, async (req, res) =
 });
 
 // Manual trigger endpoints (admin-protected)
-app.post('/api/reminders/process', adminAuth, async (req, res) => {
-// Manual trigger endpoints (for testing/admin - Should eventually be protected)
 app.post('/api/reminders/process', createAdminLimiter(), adminAuth, async (req, res) => {
   try {
     await reminderEngine.processReminders();

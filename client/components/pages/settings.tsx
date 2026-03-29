@@ -13,7 +13,7 @@ import {
   Users,
   Building2,
 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { type Currency, CURRENCY_NAMES, CURRENCY_SYMBOLS } from "@/lib/currency-utils"
 
 interface SettingsPageProps {
@@ -45,10 +45,28 @@ export default function SettingsPage({
   const [recommendations, setRecommendations] = useState(true)
   const [showAddApiKey, setShowAddApiKey] = useState(false)
   const [newApiKey, setNewApiKey] = useState({ tool: "", key: "" })
-  const [apiKeys, setApiKeys] = useState([
-    { id: 1, tool: "ChatGPT", key: "sk-...abc123", visible: false, lastUsed: "2 hours ago" },
-    { id: 2, tool: "Midjourney", key: "mj-...xyz789", visible: false, lastUsed: "1 day ago" },
-  ])
+  const [apiKeys, setApiKeys] = useState<Array<{ id: string; service_name: string; scopes: string[]; revoked: boolean; created_at?: string; last_used_at?: string; request_count?: number; visible?: boolean }>>([])
+
+  const fetchApiKeys = async () => {
+    try {
+      const res = await fetch('/api/keys')
+      if (!res.ok) throw new Error('Failed to load API keys')
+      const result = await res.json()
+      setApiKeys(
+        (result.data || []).map((k: any) => ({
+          ...k,
+          service_name: k.service_name || k.name || 'unknown',
+          visible: false,
+        })),
+      )
+    } catch (err) {
+      console.error('Failed to fetch API keys', err)
+    }
+  }
+
+  useEffect(() => {
+    fetchApiKeys()
+  }, [])
 
   const [showTeamUpgrade, setShowTeamUpgrade] = useState(false)
   const [teamSetup, setTeamSetup] = useState({
@@ -83,25 +101,40 @@ export default function SettingsPage({
     },
   ])
 
-  const handleAddApiKey = () => {
-    if (newApiKey.tool && newApiKey.key) {
-      setApiKeys([
-        ...apiKeys,
-        {
-          id: Math.max(...apiKeys.map((k) => k.id), 0) + 1,
-          tool: newApiKey.tool,
-          key: newApiKey.key,
-          visible: false,
-          lastUsed: "Just now",
-        },
-      ])
-      setNewApiKey({ tool: "", key: "" })
+  const handleAddApiKey = async () => {
+    if (!newApiKey.tool || !newApiKey.key) {
+      return
+    }
+
+    try {
+      const res = await fetch('/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newApiKey.tool, scopes: ['subscriptions:read', 'subscriptions:write'] }),
+      })
+
+      if (!res.ok) {
+        throw new Error('Failed to create API key')
+      }
+
+      await fetchApiKeys()
+      setNewApiKey({ tool: '', key: '' })
       setShowAddApiKey(false)
+    } catch (err) {
+      console.error('Add API key failed', err)
     }
   }
 
-  const handleDeleteApiKey = (id: number) => {
-    setApiKeys(apiKeys.filter((k) => k.id !== id))
+  const handleDeleteApiKey = async (id: string) => {
+    try {
+      const res = await fetch(`/api/keys/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        throw new Error('Failed to delete API key')
+      }
+      await fetchApiKeys()
+    } catch (err) {
+      console.error('Delete API key failed', err)
+    }
   }
 
   const toggleKeyVisibility = (id: number) => {
@@ -684,12 +717,12 @@ export default function SettingsPage({
               className={`flex items-center justify-between p-3 rounded-lg ${darkMode ? "bg-gray-800" : "bg-gray-50"}`}
             >
               <div className="flex-1">
-                <p className={`font-medium ${darkMode ? "text-white" : "text-gray-900"}`}>{apiKey.tool}</p>
+                <p className={`font-medium ${darkMode ? "text-white" : "text-gray-900"}`}>{apiKey.service_name}</p>
                 <p className={`text-sm font-mono ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-                  {apiKey.visible ? apiKey.key : "••••••••••••••••"}
+                  {apiKey.visible ? 'API key shown in creation only' : "••••••••••••••••"}
                 </p>
                 <p className={`text-xs ${darkMode ? "text-gray-500" : "text-gray-500"}`}>
-                  Last used: {apiKey.lastUsed}
+                  Last used: {apiKey.last_used_at ? new Date(apiKey.last_used_at).toLocaleString() : 'Never'}
                 </p>
               </div>
               <div className="flex items-center gap-2">

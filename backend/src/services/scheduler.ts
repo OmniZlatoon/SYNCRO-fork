@@ -5,6 +5,8 @@ import { riskDetectionService } from './risk-detection/risk-detection-service';
 import { expiryService } from './expiry-service';
 import { renewalLockService } from './renewal-lock-service';
 import { digestService } from './digest-service';
+import { webhookService } from './webhook-service';
+import { complianceService } from './compliance-service';
 
 export class SchedulerService {
   private jobs: cron.ScheduledTask[] = [];
@@ -30,6 +32,7 @@ export class SchedulerService {
         logger.info('Running scheduled reminder scheduling');
         try {
           await reminderEngine.scheduleReminders();
+          await reminderEngine.scheduleTrialReminders();
         } catch (error) {
           logger.error('Error in scheduled reminder scheduling:', error);
         }
@@ -89,6 +92,18 @@ export class SchedulerService {
       }),
     );
 
+    // ── Every 5 minutes: webhook retry processing ───────────────────────
+    this.jobs.push(
+      cron.schedule('*/5 * * * *', async () => {
+        logger.info('Running scheduled webhook retry processing');
+        try {
+          await webhookService.processRetries();
+        } catch (error) {
+          logger.error('Error in scheduled webhook retry processing:', error);
+        }
+      }),
+    );
+
     // ── 1st of every month at 8 AM UTC: monthly digest ───────────────────
     // Cron: minute=0, hour=8, day=1, month=*, weekday=*
     this.jobs.push(
@@ -99,6 +114,19 @@ export class SchedulerService {
           logger.info('Monthly digest job completed', result);
         } catch (error) {
           logger.error('Error in monthly digest job:', error);
+        }
+      }),
+    );
+
+    // ── Daily at 3 AM UTC: process account hard deletes ─────────────────
+    this.jobs.push(
+      cron.schedule('0 3 * * *', async () => {
+        logger.info('Running account hard delete job');
+        try {
+          const processed = await complianceService.processHardDeletes();
+          logger.info(`Hard delete job completed: ${processed} accounts processed`);
+        } catch (error) {
+          logger.error('Error in hard delete job:', error);
         }
       }),
     );

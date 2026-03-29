@@ -14,8 +14,32 @@ const router = express.Router();
 router.use(authenticate);
 
 /**
- * GET /api/risk-score/:subscriptionId
- * Get risk score for a specific subscription
+ * @openapi
+ * /api/risk-score/{subscriptionId}:
+ *   get:
+ *     tags: [Risk Score]
+ *     summary: Get risk score for a subscription
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: subscriptionId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Risk score data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data: { $ref: '#/components/schemas/RiskScore' }
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Risk score not found
  */
 router.get('/:subscriptionId', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -30,7 +54,10 @@ router.get('/:subscriptionId', async (req: AuthenticatedRequest, res: Response) 
     }
 
     // Verify subscription belongs to user and get risk score
-    const riskScore = await riskDetectionService.getRiskScore(subscriptionId, userId);
+    const riskScore = await riskDetectionService.getRiskScore(
+      Array.isArray(subscriptionId) ? subscriptionId[0] : subscriptionId,
+      userId
+    );
 
     return res.status(200).json({
       success: true,
@@ -59,8 +86,28 @@ router.get('/:subscriptionId', async (req: AuthenticatedRequest, res: Response) 
 });
 
 /**
- * GET /api/risk-score
- * Get all risk scores for authenticated user
+ * @openapi
+ * /api/risk-score:
+ *   get:
+ *     tags: [Risk Score]
+ *     summary: Get all risk scores for the authenticated user
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Array of risk scores
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: array
+ *                   items: { $ref: '#/components/schemas/RiskScore' }
+ *                 total: { type: integer }
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -96,9 +143,18 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 /**
- * POST /api/risk-score/recalculate
- * Manually trigger risk recalculation for all subscriptions
- * Note: In production, this should be admin-only
+ * @openapi
+ * /api/risk-score/recalculate:
+ *   post:
+ *     tags: [Risk Score]
+ *     summary: Trigger risk recalculation for all subscriptions
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Recalculation result
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/recalculate', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -133,8 +189,32 @@ router.post('/recalculate', async (req: AuthenticatedRequest, res: Response) => 
 });
 
 /**
- * POST /api/risk-score/:subscriptionId/calculate
- * Calculate risk for a specific subscription
+ * @openapi
+ * /api/risk-score/{subscriptionId}/calculate:
+ *   post:
+ *     tags: [Risk Score]
+ *     summary: Calculate risk for a specific subscription
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: subscriptionId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Calculated risk score
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data: { $ref: '#/components/schemas/RiskScore' }
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Subscription not found
  */
 router.post('/:subscriptionId/calculate', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -149,7 +229,9 @@ router.post('/:subscriptionId/calculate', async (req: AuthenticatedRequest, res:
     }
 
     // Compute risk
-    const assessment = await riskDetectionService.computeRiskLevel(subscriptionId);
+    const assessment = await riskDetectionService.computeRiskLevel(
+      Array.isArray(subscriptionId) ? subscriptionId[0] : subscriptionId
+    );
     
     // Save risk score
     const riskScore = await riskDetectionService.saveRiskScore(assessment, userId);

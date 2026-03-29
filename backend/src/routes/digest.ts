@@ -12,8 +12,46 @@ const router = Router();
 router.use(authenticate);
 
 /**
- * GET /api/digest/preferences
- * Fetch the authenticated user's digest settings.
+ * @openapi
+ * /api/digest/preferences:
+ *   get:
+ *     tags: [Digest]
+ *     summary: Get digest preferences
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Digest preferences
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data: { $ref: '#/components/schemas/DigestPreferences' }
+ *       401:
+ *         description: Unauthorized
+ *   patch:
+ *     tags: [Digest]
+ *     summary: Update digest preferences
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               digestEnabled: { type: boolean }
+ *               digestDay: { type: integer, minimum: 1, maximum: 28 }
+ *               includeYearToDate: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Updated preferences
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/preferences', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -65,9 +103,20 @@ router.patch('/preferences', async (req: AuthenticatedRequest, res: Response) =>
 });
 
 /**
- * POST /api/digest/test
- * Immediately send a digest preview to the authenticated user.
- * Rate-limited: one test email per hour (tracked via audit log).
+ * @openapi
+ * /api/digest/test:
+ *   post:
+ *     tags: [Digest]
+ *     summary: Send a test digest email (rate-limited to 1/hour)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Test digest sent
+ *       401:
+ *         description: Unauthorized
+ *       429:
+ *         description: Rate limit — already sent within the last hour
  */
 router.post('/test', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -102,8 +151,18 @@ router.post('/test', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 /**
- * GET /api/digest/history
- * Return the last 24 digest send records for the user.
+ * @openapi
+ * /api/digest/history:
+ *   get:
+ *     tags: [Digest]
+ *     summary: Get digest send history (last 24 records)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Digest history
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/history', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -121,9 +180,18 @@ router.get('/history', async (req: AuthenticatedRequest, res: Response) => {
 // ─── Admin routes ─────────────────────────────────────────────────────────────
 
 /**
- * POST /api/digest/admin/run
- * Manually trigger the monthly digest run for all opted-in users.
- * Admin only.
+ * @openapi
+ * /api/digest/admin/run:
+ *   post:
+ *     tags: [Digest]
+ *     summary: Manually trigger monthly digest run (admin only)
+ *     security:
+ *       - adminKey: []
+ *     responses:
+ *       200:
+ *         description: Digest run result
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/admin/run', adminAuth, async (_req, res: Response) => {
   try {

@@ -9,12 +9,37 @@ const router = Router();
 router.use(authenticate);
 
 /**
- * GET /api/simulation
- * Generate billing simulation for the authenticated user
- * 
- * Query Parameters:
- * - days (optional): Number of days to project (1-365, default: 30)
- * - balance (optional): Current balance for risk assessment
+ * @openapi
+ * /api/simulation:
+ *   get:
+ *     tags: [Simulation]
+ *     summary: Generate a billing simulation
+ *     description: Projects upcoming billing charges for the authenticated user.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: days
+ *         schema: { type: integer, minimum: 1, maximum: 365, default: 30 }
+ *         description: Number of days to project
+ *       - in: query
+ *         name: balance
+ *         schema: { type: number }
+ *         description: Current balance for risk assessment
+ *     responses:
+ *       200:
+ *         description: Simulation result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data: { type: object }
+ *       400:
+ *         description: Invalid query parameters
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   try {

@@ -1,30 +1,31 @@
--- Add trial tracking columns to subscriptions table
+-- Add trial tracking fields to subscriptions table
 ALTER TABLE public.subscriptions
-  ADD COLUMN IF NOT EXISTS is_trial BOOLEAN DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS trial_converts_to_price DECIMAL(10,2),
   ADD COLUMN IF NOT EXISTS credit_card_required BOOLEAN DEFAULT FALSE;
 
--- Index for efficient trial expiry queries
-CREATE INDEX IF NOT EXISTS subscriptions_trial_ends_at_idx
-  ON public.subscriptions(trial_ends_at)
-  WHERE is_trial = TRUE;
+-- Note: is_trial and trial_ends_at already exist on the subscriptions table.
+-- price_after_trial covers trial_converts_to_price semantics but we add the
+-- canonical column name for clarity; both are kept for backwards compatibility.
 
--- Table to track trial conversion events
+-- Trial conversion events table
+-- Tracks whether a trial converted intentionally (user clicked "Keep") or automatically,
+-- and whether the user acted on reminders — used for the "Saved by SYNCRO" metric.
 CREATE TABLE IF NOT EXISTS public.trial_conversion_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   subscription_id UUID NOT NULL REFERENCES public.subscriptions(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  conversion_type TEXT NOT NULL CHECK (conversion_type IN ('intentional', 'automatic', 'cancelled')),
-  -- intentional = user clicked "Keep", automatic = auto-charged, cancelled = user cancelled before charge
-  reminder_count INTEGER DEFAULT 0,       -- how many trial reminders were sent
-  acted_on_reminder BOOLEAN DEFAULT FALSE, -- did user act after receiving a reminder?
-  saved_by_syncro BOOLEAN DEFAULT FALSE,   -- trial cancelled before auto-charge thanks to SYNCRO reminder
+  -- 'converted' = user kept it, 'cancelled' = user cancelled before charge
+  outcome TEXT NOT NULL CHECK (outcome IN ('converted', 'cancelled')),
+  -- 'intentional' = user clicked Keep/Cancel, 'automatic' = trial expired without action
+  conversion_type TEXT NOT NULL CHECK (conversion_type IN ('intentional', 'automatic')),
+  -- true when user cancelled before auto-charge (counts toward "Saved by SYNCRO")
+  saved_by_syncro BOOLEAN NOT NULL DEFAULT FALSE,
+  -- which reminder (days_before) the user acted on, if any
+  acted_on_reminder_days INTEGER,
   converted_price DECIMAL(10,2),
-  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Enable RLS
 ALTER TABLE public.trial_conversion_events ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "trial_conversion_events_select_own"
@@ -35,7 +36,12 @@ CREATE POLICY "trial_conversion_events_insert_own"
   ON public.trial_conversion_events FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
--- Indexes
-CREATE INDEX IF NOT EXISTS trial_conversion_events_user_id_idx ON public.trial_conversion_events(user_id);
-CREATE INDEX IF NOT EXISTS trial_conversion_events_subscription_id_idx ON public.trial_conversion_events(subscription_id);
-CREATE INDEX IF NOT EXISTS trial_conversion_events_saved_by_syncro_idx ON public.trial_conversion_events(saved_by_syncro) WHERE saved_by_syncro = TRUE;
+CREATE INDEX IF NOT EXISTS trial_conversion_events_user_id_idx
+  ON public.trial_conversion_events(user_id);
+
+CREATE INDEX IF NOT EXISTS trial_conversion_events_subscription_id_idx
+  ON public.trial_conversion_events(subscription_id);
+
+CREATE INDEX IF NOT EXISTS trial_conversion_events_saved_idx
+  ON public.trial_conversion_events(saved_by_syncro)
+  WHERE saved_by_syncro = TRUE;

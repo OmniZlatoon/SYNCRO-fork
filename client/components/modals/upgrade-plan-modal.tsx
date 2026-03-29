@@ -248,11 +248,33 @@ function StripePaymentForm({ plan, onSuccess, onCancel, darkMode }: StripePaymen
     }
 
     setLoading(true)
-    // Simulate payment processing
-    setTimeout(() => {
+    try {
+      // In a real implementation with Stripe Elements, you would create a payment method here.
+      // For this implementation, we'll send a test token to our new backend.
+      const response = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: plan.price,
+          currency: "usd",
+          token: "tok_visa", // Mock Stripe test token
+          planName: plan.name,
+          provider: "stripe",
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Payment failed")
+      }
+
       setLoading(false)
       onSuccess()
-    }, 2000)
+    } catch (error: any) {
+      setLoading(false)
+      alert(`Payment failed: ${error.message}`)
+    }
   }
 
   return (

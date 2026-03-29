@@ -1,8 +1,32 @@
 import { Router, Response } from 'express';
+import { z } from 'zod';
 import { supabase } from '../config/database';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { requireRole } from '../middleware/rbac';
 import { emailService } from '../services/email-service';
+import { createTeamInviteLimiter } from '../middleware/rate-limit-factory';
 import logger from '../config/logger';
+
+// ─── Validation schemas ───────────────────────────────────────────────────────
+
+const VALID_ROLES = ['admin', 'member', 'viewer'] as const;
+
+const inviteSchema = z.object({
+  email: z
+    .string()
+    .email('Must be a valid email address')
+    .max(254, 'Email must not exceed 254 characters'),
+  role: z.enum(VALID_ROLES, {
+    errorMap: () => ({ message: `role must be one of: ${VALID_ROLES.join(', ')}` }),
+  }).default('member'),
+});
+
+const updateRoleSchema = z.object({
+  role: z.enum(VALID_ROLES, {
+    errorMap: () => ({ message: `role must be one of: ${VALID_ROLES.join(', ')}` }),
+  }),
+});
+
 
 const router = Router();
 
@@ -56,6 +80,29 @@ function canManageTeam(ctx: { isOwner: boolean; memberRole: string | null }): bo
 // ---------------------------------------------------------------------------
 // GET /api/team  — list team members
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team:
+ *   get:
+ *     tags: [Team]
+ *     summary: List team members
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Array of team members
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: array
+ *                   items: { $ref: '#/components/schemas/TeamMember' }
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ctx = await resolveUserTeam(req.user!.id);
@@ -100,18 +147,49 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
 // ---------------------------------------------------------------------------
 // POST /api/team/invite  — invite a new member
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team/invite:
+ *   post:
+ *     tags: [Team]
+ *     summary: Invite a team member
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string, format: email }
+ *               role: { type: string, enum: [admin, member, viewer], default: member }
+ *     responses:
+ *       201:
+ *         description: Invitation sent
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden — only owners/admins can invite
+ *       409:
+ *         description: Pending invitation already exists or user already a member
+ */
 router.post('/invite', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/invite', createTeamInviteLimiter(), async (req: AuthenticatedRequest, res: Response) => {
+router.post('/invite', createTeamInviteLimiter(), requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { email, role = 'member' } = req.body as { email?: string; role?: string };
-
-    if (!email) {
-      return res.status(400).json({ success: false, error: 'email is required' });
+    const bodyValidation = inviteSchema.safeParse(req.body);
+    if (!bodyValidation.success) {
+      return res.status(400).json({
+        success: false,
+        error: bodyValidation.error.errors.map((e) => e.message).join(', '),
+      });
     }
 
-    const validRoles = ['admin', 'member', 'viewer'];
-    if (!validRoles.includes(role)) {
-      return res.status(400).json({ success: false, error: `role must be one of: ${validRoles.join(', ')}` });
-    }
+    const { email, role } = bodyValidation.data;
 
     // Ensure user has (or creates) a team
     let ctx = await resolveUserTeam(req.user!.id);
@@ -152,7 +230,7 @@ router.post('/invite', async (req: AuthenticatedRequest, res: Response) => {
       .from('team_members')
       .select('id')
       .eq('team_id', ctx.teamId)
-      .eq('user_id', (await supabase.auth.admin.getUserByEmail(email))?.data?.user?.id ?? '')
+      .eq('user_id', (await (supabase.auth.admin as any)?.getUserByEmail?.(email))?.data?.user?.id ?? '')
       .limit(1)
       .single();
 
@@ -218,7 +296,24 @@ router.post('/invite', async (req: AuthenticatedRequest, res: Response) => {
 // ---------------------------------------------------------------------------
 // GET /api/team/pending  — list pending invitations
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team/pending:
+ *   get:
+ *     tags: [Team]
+ *     summary: List pending invitations
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Pending invitations
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
 router.get('/pending', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/pending', requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ctx = await resolveUserTeam(req.user!.id);
 
@@ -253,6 +348,29 @@ router.get('/pending', async (req: AuthenticatedRequest, res: Response) => {
 // ---------------------------------------------------------------------------
 // POST /api/team/accept/:token  — accept an invitation
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team/accept/{token}:
+ *   post:
+ *     tags: [Team]
+ *     summary: Accept a team invitation
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Joined team
+ *       403:
+ *         description: Email mismatch
+ *       404:
+ *         description: Invitation not found or already used
+ *       410:
+ *         description: Invitation expired
+ */
 router.post('/accept/:token', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { token } = req.params;
@@ -323,15 +441,54 @@ router.post('/accept/:token', async (req: AuthenticatedRequest, res: Response) =
 // ---------------------------------------------------------------------------
 // PUT /api/team/:memberId/role  — update a member's role (owner only)
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team/{memberId}/role:
+ *   put:
+ *     tags: [Team]
+ *     summary: Update a member's role (owner only)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: memberId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [role]
+ *             properties:
+ *               role: { type: string, enum: [admin, member, viewer] }
+ *     responses:
+ *       200:
+ *         description: Role updated
+ *       400:
+ *         description: Invalid role
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Only owner can change roles
+ *       404:
+ *         description: Member not found
+ */
 router.put('/:memberId/role', async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:memberId/role', requireRole('owner'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { memberId } = req.params;
-    const { role } = req.body as { role?: string };
 
-    const validRoles = ['admin', 'member', 'viewer'];
-    if (!role || !validRoles.includes(role)) {
-      return res.status(400).json({ success: false, error: `role must be one of: ${validRoles.join(', ')}` });
+    const bodyValidation = updateRoleSchema.safeParse(req.body);
+    if (!bodyValidation.success) {
+      return res.status(400).json({
+        success: false,
+        error: bodyValidation.error.errors.map((e) => e.message).join(', '),
+      });
     }
+
+    const { role } = bodyValidation.data;
 
     const ctx = await resolveUserTeam(req.user!.id);
 
@@ -373,7 +530,33 @@ router.put('/:memberId/role', async (req: AuthenticatedRequest, res: Response) =
 // ---------------------------------------------------------------------------
 // DELETE /api/team/:memberId  — remove a team member (owner or admin)
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team/{memberId}:
+ *   delete:
+ *     tags: [Team]
+ *     summary: Remove a team member
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: memberId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Member removed
+ *       400:
+ *         description: Cannot remove owner
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Member not found
+ */
 router.delete('/:memberId', async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:memberId', requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { memberId } = req.params;
 

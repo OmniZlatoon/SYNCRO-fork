@@ -18,6 +18,7 @@ const required = [
   'STRIPE_WEBHOOK_SECRET',
   'SOROBAN_CONTRACT_ADDRESS',
   'STELLAR_NETWORK_URL',
+  'ADMIN_API_KEY',
 ];
 
 const missing = required.filter((key) => !process.env[key]);

@@ -49,9 +49,12 @@ import {
 } from "@/lib/subscription-utils";
 import { checkBudgetAlerts } from "@/lib/budget-utils";
 
+import { analyticsApi, AnalyticsSummary } from "@/lib/api/analytics";
+
 interface AppClientProps {
     initialSubscriptions: DBSubscription[];
     initialEmailAccounts: any[];
+    initialPayments: any[];
     initialPriceChanges?: any[];
     initialConsolidationSuggestions?: any[];
 }
@@ -59,10 +62,15 @@ interface AppClientProps {
 export function AppClient({
     initialSubscriptions,
     initialEmailAccounts,
+    initialPayments = [],
     initialPriceChanges = [],
     initialConsolidationSuggestions = [],
 }: AppClientProps) {
+    // Analytics state
+    const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummary | undefined>(undefined);
+
     // App state
+    const [payments, setPayments] = useState(initialPayments);
     const [mode, setMode] = useState<
         "welcome" | "individual" | "enterprise" | "enterprise-setup"
     >("welcome");
@@ -84,6 +92,8 @@ export function AppClient({
     const [showEditSubscription, setShowEditSubscription] = useState(false);
     const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(true);
     const [currency, setCurrency] = useState<Currency>("USD");
+    const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
+    const [ratesStale, setRatesStale] = useState(false);
     const [isOffline, setIsOffline] = useState(false);
 
     // Data state
@@ -197,6 +207,39 @@ export function AppClient({
 
     // Effects
     useEffect(() => {
+        async function fetchRates() {
+            try {
+                const response = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/exchange-rates?base=${currency}`,
+                    { credentials: 'include' }
+                );
+                if (response.ok) {
+                    const json = await response.json();
+                    if (json.success) {
+                        setExchangeRates(json.data.rates);
+                        setRatesStale(json.data.stale);
+                    }
+                }
+            } catch {
+                // Rates fetch failed — dashboard will show native currencies without conversion
+            }
+        }
+        fetchRates();
+    }, [currency]);
+
+    useEffect(() => {
+        async function fetchAnalytics() {
+            try {
+                const summary = await analyticsApi.getSummary();
+                setAnalyticsSummary(summary);
+            } catch (error) {
+                console.error("Failed to fetch analytics summary:", error);
+            }
+        }
+        fetchAnalytics();
+    }, [subscriptions]);
+
+    useEffect(() => {
         setIsLoadingSubscriptions(false);
     }, []);
 
@@ -286,6 +329,28 @@ export function AppClient({
             description: `Your plan has been upgraded to ${newPlan}`,
             variant: "success",
         });
+    };
+
+    const handleBudgetChange = async (limit: number) => {
+        setBudgetLimit(limit);
+        try {
+            await analyticsApi.upsertBudget({ overall_limit: limit });
+            // Refresh analytics summary to reflect the new budget
+            const summary = await analyticsApi.getSummary();
+            setAnalyticsSummary(summary);
+            showToast({
+                title: "Budget updated",
+                description: `Your monthly budget has been set to ${limit}`,
+                variant: "success",
+            });
+        } catch (error) {
+            console.error("Failed to update budget:", error);
+            showToast({
+                title: "Error",
+                description: "Failed to update budget on server",
+                variant: "error",
+            });
+        }
     };
 
     const handleManageSubscription = (subscription: any) => {
@@ -474,6 +539,7 @@ export function AppClient({
                             <DashboardPage
                                 subscriptions={subscriptions}
                                 totalSpend={totalSpend}
+                                summary={analyticsSummary}
                                 insights={notifications}
                                 onViewInsights={handleViewInsights}
                                 onRenew={handleRenewSubscription}
@@ -483,6 +549,9 @@ export function AppClient({
                                 duplicates={duplicates}
                                 unusedSubscriptions={unusedSubscriptions}
                                 trialSubscriptions={trialSubscriptions}
+                                displayCurrency={currency}
+                                exchangeRates={exchangeRates}
+                                ratesStale={ratesStale}
                             />
                         )}
                         {activeView === "subscriptions" && (
@@ -502,11 +571,16 @@ export function AppClient({
                             />
                         )}
                         {activeView === "analytics" && (
-                            <AnalyticsPage
-                                subscriptions={subscriptions}
-                                totalSpend={totalSpend}
-                                darkMode={darkMode}
-                            />
+                            analyticsSummary ? (
+                                <AnalyticsPage
+                                    summary={analyticsSummary}
+                                    darkMode={darkMode}
+                                />
+                            ) : (
+                                <div className="flex items-center justify-center py-20">
+                                    <LoadingSpinner size="lg" darkMode={darkMode} />
+                                </div>
+                            )
                         )}
                         {activeView === "integrations" && (
                             <IntegrationsPage
@@ -530,10 +604,35 @@ export function AppClient({
                                 onUpgradeToTeam={handleUpgradeToTeam}
                                 onUpgrade={handleUpgradePlan}
                                 budgetLimit={budgetLimit}
-                                onBudgetChange={setBudgetLimit}
+                                onBudgetChange={handleBudgetChange}
                                 darkMode={darkMode}
                                 currency={currency}
                                 onCurrencyChange={(c: Currency) => setCurrency(c)}
+                                payments={payments}
+                                onRefund={async (transactionId: string) => {
+                                    try {
+                                        const response = await fetch("/api/payments/refund", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ transactionId }),
+                                        });
+                                        if (response.ok) {
+                                            showToast({
+                                                title: "Refund requested",
+                                                description: "Your refund request has been submitted.",
+                                                variant: "success",
+                                            });
+                                        } else {
+                                            throw new Error("Refund failed");
+                                        }
+                                    } catch (error) {
+                                        showToast({
+                                            title: "Error",
+                                            description: "Failed to request refund. Please contact support.",
+                                            variant: "error",
+                                        });
+                                    }
+                                }}
                             />
                         )}
                     </>

@@ -39,8 +39,34 @@ const updateMerchantSchema = createMerchantSchema.partial();
 const router = Router();
 
 /**
- * GET /api/merchants
- * List merchants with optional filtering
+ * @openapi
+ * /api/merchants:
+ *   get:
+ *     tags: [Merchants]
+ *     summary: List merchants
+ *     parameters:
+ *       - in: query
+ *         name: category
+ *         schema: { type: string }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *       - in: query
+ *         name: offset
+ *         schema: { type: integer, default: 0 }
+ *     responses:
+ *       200:
+ *         description: List of merchants
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: array
+ *                   items: { $ref: '#/components/schemas/Merchant' }
+ *                 pagination: { $ref: '#/components/schemas/Pagination' }
  */
 router.get('/', async (req: Request, res: Response) => {
     try {
@@ -71,8 +97,28 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/merchants/:id
- * Get single merchant by ID
+ * @openapi
+ * /api/merchants/{id}:
+ *   get:
+ *     tags: [Merchants]
+ *     summary: Get a merchant by ID
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Merchant object
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data: { $ref: '#/components/schemas/Merchant' }
+ *       404:
+ *         description: Not found
  */
 router.get('/:id', async (req: Request, res: Response) => {
     try {
@@ -93,8 +139,32 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/merchants
- * Create new merchant (Admin only)
+ * @openapi
+ * /api/merchants:
+ *   post:
+ *     tags: [Merchants]
+ *     summary: Create a merchant (admin only)
+ *     security:
+ *       - adminKey: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name]
+ *             properties:
+ *               name: { type: string }
+ *               category: { type: string }
+ *               website_url: { type: string, format: uri }
+ *               logo_url: { type: string, format: uri }
+ *     responses:
+ *       201:
+ *         description: Merchant created
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/', adminAuth, async (req: Request, res: Response) => {
     try {
@@ -122,9 +192,50 @@ router.post('/', adminAuth, async (req: Request, res: Response) => {
 });
 
 /**
- * PATCH /api/merchants/:id
- * Update merchant (Admin only)
- * NOTE: Rate limiter applied here to prevent mass renewal/update congestion per merchant.
+ * @openapi
+ * /api/merchants/{id}:
+ *   patch:
+ *     tags: [Merchants]
+ *     summary: Update a merchant (admin only)
+ *     security:
+ *       - adminKey: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               category: { type: string }
+ *               website_url: { type: string, format: uri }
+ *               logo_url: { type: string, format: uri }
+ *     responses:
+ *       200:
+ *         description: Updated merchant
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Not found
+ *   delete:
+ *     tags: [Merchants]
+ *     summary: Delete a merchant (admin only)
+ *     security:
+ *       - adminKey: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Deleted
+ *       401:
+ *         description: Unauthorized
  */
 router.patch('/:id', adminAuth, renewalRateLimiter, async (req: Request, res: Response) => {
 router.patch('/:id', adminAuth, async (req: Request, res: Response) => {
@@ -154,8 +265,7 @@ router.patch('/:id', adminAuth, async (req: Request, res: Response) => {
 });
 
 /**
- * DELETE /api/merchants/:id
- * Delete merchant (Admin only)
+ * DELETE /api/merchants/:id — covered by PATCH doc block above
  */
 router.delete('/:id', adminAuth, async (req: Request, res: Response) => {
     try {

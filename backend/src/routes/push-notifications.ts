@@ -8,9 +8,48 @@ const router = Router();
 router.use(authenticate);
 
 /**
- * POST /api/notifications/push/subscribe
- * Save a browser push subscription for the authenticated user.
- * If the same endpoint already exists for this user, the keys are updated (upsert).
+ * @openapi
+ * /api/notifications/push/subscribe:
+ *   post:
+ *     tags: [Push Notifications]
+ *     summary: Save a browser push subscription
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [endpoint, keys]
+ *             properties:
+ *               endpoint: { type: string, format: uri }
+ *               keys:
+ *                 type: object
+ *                 required: [p256dh, auth]
+ *                 properties:
+ *                   p256dh: { type: string }
+ *                   auth: { type: string }
+ *               userAgent: { type: string }
+ *     responses:
+ *       201:
+ *         description: Subscription saved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id: { type: string }
+ *                     endpoint: { type: string }
+ *                     createdAt: { type: string, format: date-time }
+ *       400:
+ *         description: Missing or invalid fields
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/subscribe', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -69,8 +108,25 @@ router.post('/subscribe', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 /**
- * DELETE /api/notifications/push/unsubscribe
- * Remove a push subscription by endpoint (or all subscriptions if no endpoint given).
+ * @openapi
+ * /api/notifications/push/unsubscribe:
+ *   delete:
+ *     tags: [Push Notifications]
+ *     summary: Remove a push subscription
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               endpoint: { type: string, description: "Omit to remove all subscriptions" }
+ *     responses:
+ *       200:
+ *         description: Removed
+ *       401:
+ *         description: Unauthorized
  */
 router.delete('/unsubscribe', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -103,8 +159,29 @@ router.delete('/unsubscribe', async (req: AuthenticatedRequest, res: Response) =
 });
 
 /**
- * GET /api/notifications/push/status
- * Returns whether the current user has an active push subscription.
+ * @openapi
+ * /api/notifications/push/status:
+ *   get:
+ *     tags: [Push Notifications]
+ *     summary: Check if user has an active push subscription
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Subscription status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     subscribed: { type: boolean }
+ *                     count: { type: integer }
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/status', async (req: AuthenticatedRequest, res: Response) => {
   try {

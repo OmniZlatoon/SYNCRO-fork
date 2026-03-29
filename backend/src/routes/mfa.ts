@@ -13,6 +13,33 @@ const totpRateLimiter = new TotpRateLimiter();
 // Apply authenticate middleware to all routes
 router.use(authenticate);
 
+/**
+ * @openapi
+ * /api/2fa/recovery-codes/generate:
+ *   post:
+ *     tags: [2FA]
+ *     summary: Generate 10 recovery codes
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       201:
+ *         description: Recovery codes generated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     codes:
+ *                       type: array
+ *                       items: { type: string }
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/2fa/recovery-codes/generate', async (req: AuthenticatedRequest, res: Response) => {
 // ---------------------------------------------------------------------------
 // POST /api/2fa/recovery-codes/generate
 // Generate 10 recovery codes for the authenticated user
@@ -31,6 +58,34 @@ router.post('/2fa/recovery-codes/generate', createMfaLimiter(), async (req: Auth
   }
 });
 
+/**
+ * @openapi
+ * /api/2fa/recovery-codes/verify:
+ *   post:
+ *     tags: [2FA]
+ *     summary: Verify a recovery code (rate-limited)
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [code]
+ *             properties:
+ *               code: { type: string }
+ *     responses:
+ *       200:
+ *         description: Code valid
+ *       400:
+ *         description: code is required
+ *       401:
+ *         description: Invalid or already-used recovery code
+ *       429:
+ *         description: Too many failed attempts
+ */
+router.post('/2fa/recovery-codes/verify', async (req: AuthenticatedRequest, res: Response) => {
 // ---------------------------------------------------------------------------
 // POST /api/2fa/recovery-codes/verify
 // Verify a recovery code — rate-limited per session
@@ -79,10 +134,20 @@ router.post('/2fa/recovery-codes/verify', createMfaLimiter(), async (req: Authen
   }
 });
 
-// ---------------------------------------------------------------------------
-// DELETE /api/2fa/recovery-codes
-// Invalidate all recovery codes for the authenticated user
-// ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/2fa/recovery-codes:
+ *   delete:
+ *     tags: [2FA]
+ *     summary: Invalidate all recovery codes
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All codes invalidated
+ *       401:
+ *         description: Unauthorized
+ */
 router.delete('/2fa/recovery-codes', async (req: AuthenticatedRequest, res: Response) => {
   try {
     await recoveryCodeService.invalidateAll(req.user!.id);
@@ -96,10 +161,31 @@ router.delete('/2fa/recovery-codes', async (req: AuthenticatedRequest, res: Resp
   }
 });
 
-// ---------------------------------------------------------------------------
-// POST /api/2fa/notify
-// Send a 2FA lifecycle confirmation email (non-blocking on failure)
-// ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/2fa/notify:
+ *   post:
+ *     tags: [2FA]
+ *     summary: Send a 2FA lifecycle notification email
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [event]
+ *             properties:
+ *               event: { type: string, enum: [enrolled, disabled] }
+ *     responses:
+ *       200:
+ *         description: Notification queued
+ *       400:
+ *         description: Invalid event value
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/2fa/notify', async (req: AuthenticatedRequest, res: Response) => {
   const { event } = req.body as { event?: 'enrolled' | 'disabled' };
 
@@ -126,10 +212,40 @@ router.post('/2fa/notify', async (req: AuthenticatedRequest, res: Response) => {
   res.json({ success: true });
 });
 
-// ---------------------------------------------------------------------------
-// PUT /api/teams/:teamId/require-2fa
-// Set the team's 2FA enforcement policy (team owner only)
-// ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/teams/{teamId}/require-2fa:
+ *   put:
+ *     tags: [2FA]
+ *     summary: Set team 2FA enforcement policy (owner only)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [required]
+ *             properties:
+ *               required: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Policy updated
+ *       400:
+ *         description: required must be boolean
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Only team owner can change this
+ *       404:
+ *         description: Team not found
+ */
 router.put('/teams/:teamId/require-2fa', async (req: AuthenticatedRequest, res: Response) => {
   const { teamId } = req.params;
   const { required } = req.body as { required?: boolean };

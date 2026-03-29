@@ -38,9 +38,75 @@ const auditBatchSchema = z.object({
 const router = Router();
 
 /**
- * POST /api/audit
- * Accept batch of audit events from client
- * Expects: { events: AuditEntry[] }
+ * @openapi
+ * /api/audit:
+ *   post:
+ *     tags: [Audit]
+ *     summary: Submit a batch of audit events
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [events]
+ *             properties:
+ *               events:
+ *                 type: array
+ *                 maxItems: 100
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     action: { type: string }
+ *                     resourceType: { type: string }
+ *                     resourceId: { type: string }
+ *                     userId: { type: string }
+ *                     metadata: { type: object }
+ *     responses:
+ *       201:
+ *         description: Events inserted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 inserted: { type: integer }
+ *                 failed: { type: integer }
+ *       400:
+ *         description: Validation error
+ *   get:
+ *     tags: [Audit]
+ *     summary: Retrieve audit logs (admin only)
+ *     security:
+ *       - adminKey: []
+ *     parameters:
+ *       - in: query
+ *         name: action
+ *         schema: { type: string }
+ *       - in: query
+ *         name: resourceType
+ *         schema: { type: string }
+ *       - in: query
+ *         name: userId
+ *         schema: { type: string }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 100, maximum: 1000 }
+ *       - in: query
+ *         name: offset
+ *         schema: { type: integer, default: 0 }
+ *       - in: query
+ *         name: startDate
+ *         schema: { type: string, format: date-time }
+ *       - in: query
+ *         name: endDate
+ *         schema: { type: string, format: date-time }
+ *     responses:
+ *       200:
+ *         description: Audit logs with pagination
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/', async (req: Request, res: Response) => {
   try {

@@ -79,6 +79,29 @@ function canManageTeam(ctx: { isOwner: boolean; memberRole: string | null }): bo
 // ---------------------------------------------------------------------------
 // GET /api/team  — list team members
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team:
+ *   get:
+ *     tags: [Team]
+ *     summary: List team members
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Array of team members
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: array
+ *                   items: { $ref: '#/components/schemas/TeamMember' }
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ctx = await resolveUserTeam(req.user!.id);
@@ -123,6 +146,37 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
 // ---------------------------------------------------------------------------
 // POST /api/team/invite  — invite a new member
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team/invite:
+ *   post:
+ *     tags: [Team]
+ *     summary: Invite a team member
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string, format: email }
+ *               role: { type: string, enum: [admin, member, viewer], default: member }
+ *     responses:
+ *       201:
+ *         description: Invitation sent
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden — only owners/admins can invite
+ *       409:
+ *         description: Pending invitation already exists or user already a member
+ */
+router.post('/invite', async (req: AuthenticatedRequest, res: Response) => {
 router.post('/invite', createTeamInviteLimiter(), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const bodyValidation = inviteSchema.safeParse(req.body);
@@ -240,6 +294,22 @@ router.post('/invite', createTeamInviteLimiter(), async (req: AuthenticatedReque
 // ---------------------------------------------------------------------------
 // GET /api/team/pending  — list pending invitations
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team/pending:
+ *   get:
+ *     tags: [Team]
+ *     summary: List pending invitations
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Pending invitations
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ */
 router.get('/pending', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const ctx = await resolveUserTeam(req.user!.id);
@@ -275,6 +345,29 @@ router.get('/pending', async (req: AuthenticatedRequest, res: Response) => {
 // ---------------------------------------------------------------------------
 // POST /api/team/accept/:token  — accept an invitation
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team/accept/{token}:
+ *   post:
+ *     tags: [Team]
+ *     summary: Accept a team invitation
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Joined team
+ *       403:
+ *         description: Email mismatch
+ *       404:
+ *         description: Invitation not found or already used
+ *       410:
+ *         description: Invitation expired
+ */
 router.post('/accept/:token', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { token } = req.params;
@@ -345,6 +438,40 @@ router.post('/accept/:token', async (req: AuthenticatedRequest, res: Response) =
 // ---------------------------------------------------------------------------
 // PUT /api/team/:memberId/role  — update a member's role (owner only)
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team/{memberId}/role:
+ *   put:
+ *     tags: [Team]
+ *     summary: Update a member's role (owner only)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: memberId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [role]
+ *             properties:
+ *               role: { type: string, enum: [admin, member, viewer] }
+ *     responses:
+ *       200:
+ *         description: Role updated
+ *       400:
+ *         description: Invalid role
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Only owner can change roles
+ *       404:
+ *         description: Member not found
+ */
 router.put('/:memberId/role', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { memberId } = req.params;
@@ -399,6 +526,31 @@ router.put('/:memberId/role', async (req: AuthenticatedRequest, res: Response) =
 // ---------------------------------------------------------------------------
 // DELETE /api/team/:memberId  — remove a team member (owner or admin)
 // ---------------------------------------------------------------------------
+/**
+ * @openapi
+ * /api/team/{memberId}:
+ *   delete:
+ *     tags: [Team]
+ *     summary: Remove a team member
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: memberId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Member removed
+ *       400:
+ *         description: Cannot remove owner
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Member not found
+ */
 router.delete('/:memberId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { memberId } = req.params;

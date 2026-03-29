@@ -4,9 +4,12 @@ import { ArrowRight, Mail, Sparkles, Package } from "lucide-react"
 import { useState } from "react"
 import { formatCurrency, convertCurrency, getCurrencySymbol, type Currency } from "@/lib/currency-utils"
 
+import { AnalyticsSummary } from "@/lib/api/analytics"
+
 interface DashboardPageProps {
   subscriptions: any[]
   totalSpend: number
+  summary?: AnalyticsSummary
   insights: any[]
   onViewInsights: () => void
   onRenew: (subscription: any) => void
@@ -24,6 +27,7 @@ interface DashboardPageProps {
 export default function DashboardPage({
   subscriptions,
   totalSpend,
+  summary,
   insights,
   onViewInsights,
   onRenew,
@@ -233,6 +237,27 @@ export default function DashboardPage({
           </div>
         </div>
       </div>
+
+      {/* Budget Overview Widget */}
+      {summary?.budget_status?.overall_limit ? (
+        <div className={`${darkMode ? "bg-[#2D3748] border-[#374151]" : "bg-white border-gray-200"} border rounded-xl p-5 mb-8`}>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className={`text-sm font-semibold ${darkMode ? "text-white" : "text-gray-900"}`}>Overall Budget Status</h3>
+            <span className={`text-sm font-bold ${summary.budget_status.percentage > 90 ? "text-red-500" : "text-green-500"}`}>
+              ${summary.budget_status.current_spend.toFixed(0)} / ${summary.budget_status.overall_limit.toFixed(0)}
+            </span>
+          </div>
+          <div className={`w-full ${darkMode ? "bg-[#1E2A35]" : "bg-gray-100"} rounded-full h-2`}>
+            <div 
+              className={`h-2 rounded-full transition-all duration-500 ${summary.budget_status.percentage > 90 ? "bg-red-500" : summary.budget_status.percentage > 70 ? "bg-yellow-500" : "bg-green-500"}`}
+              style={{ width: `${Math.min(summary.budget_status.percentage, 100)}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">
+            You have used {summary.budget_status.percentage.toFixed(1)}% of your monthly budget.
+          </p>
+        </div>
+      ) : null}
 
       {hasNoResults && (
         <div className="flex flex-col items-center justify-center py-12">

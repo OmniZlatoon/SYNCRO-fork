@@ -18,6 +18,7 @@ import teamRoutes from './routes/team';
 import auditRoutes from './routes/audit';
 import webhookRoutes from './routes/webhooks';
 import tagsRoutes from './routes/tags';
+import analyticsRoutes from './routes/analytics';
 import { createExchangeRatesRouter } from './routes/exchange-rates';
 import { ExchangeRateService } from './services/exchange-rate/exchange-rate-service';
 import { FiatRateProvider } from './services/exchange-rate/fiat-provider';
@@ -78,6 +79,7 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/tags', tagsRoutes);
 app.use('/api', tagsRoutes); // handles /api/subscriptions/:id/notes and /api/subscriptions/:id/tags
+app.use('/api/analytics', analyticsRoutes);
 app.use('/api/exchange-rates', createExchangeRatesRouter(exchangeRateService));
 
 // API Routes (Public/Standard)
@@ -127,8 +129,6 @@ app.get('/api/admin/health', createAdminLimiter(), adminAuth, async (req, res) =
   }
 });
 
-// Manual trigger endpoints (admin-protected)
-app.post('/api/reminders/process', adminAuth, async (req, res) => {
 // Manual trigger endpoints (for testing/admin - Should eventually be protected)
 app.post('/api/reminders/process', createAdminLimiter(), adminAuth, async (req, res) => {
   try {

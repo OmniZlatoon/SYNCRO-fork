@@ -1,8 +1,10 @@
-const { google } = require('googleapis')
-const { parseSubscriptionEmail } = require('./email-parser')
-const { generateProofHash, hashContent } = require('../utils/proof-hashing')
+import { google } from 'googleapis'
+import type { Credentials } from 'google-auth-library'
+import { parseSubscriptionEmail } from './email-parser'
+import { generateProofHash, hashContent } from '../utils/proof-hashing'
 
 const GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+
 const KEYWORDS = [
   'subscription',
   'renewal',
@@ -15,6 +17,29 @@ const KEYWORDS = [
   'plan',
 ]
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface ScanGmailOptions {
+  accessToken: string
+  refreshToken?: string
+  sinceDays?: number
+  maxResults?: number
+}
+
+interface GmailHeader {
+  name: string
+  value: string
+}
+
+interface GmailPayload {
+  mimeType?: string
+  headers?: GmailHeader[]
+  body?: { data?: string }
+  parts?: GmailPayload[]
+}
+
+// ── OAuth client factory ──────────────────────────────────────────────────────
+
 function createOAuthClient() {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
     throw new Error('Missing Google OAuth environment variables')
@@ -22,11 +47,13 @@ function createOAuthClient() {
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
+    process.env.GOOGLE_REDIRECT_URI,
   )
 }
 
-function getGmailAuthUrl(state) {
+// ── Exported service functions ────────────────────────────────────────────────
+
+export function getGmailAuthUrl(state: string): string {
   const oauth2Client = createOAuthClient()
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -36,13 +63,13 @@ function getGmailAuthUrl(state) {
   })
 }
 
-async function exchangeGmailCodeForTokens(code) {
+export async function exchangeGmailCodeForTokens(code: string): Promise<Credentials> {
   const oauth2Client = createOAuthClient()
   const { tokens } = await oauth2Client.getToken(code)
   return tokens
 }
 
-async function getGmailProfile(tokens) {
+export async function getGmailProfile(tokens: Credentials) {
   const oauth2Client = createOAuthClient()
   oauth2Client.setCredentials(tokens)
   const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
@@ -50,7 +77,12 @@ async function getGmailProfile(tokens) {
   return profile.data
 }
 
-async function scanGmailSubscriptions({ accessToken, refreshToken, sinceDays = 120, maxResults = 50 }) {
+export async function scanGmailSubscriptions({
+  accessToken,
+  refreshToken,
+  sinceDays = 120,
+  maxResults = 50,
+}: ScanGmailOptions) {
   const oauth2Client = createOAuthClient()
   oauth2Client.setCredentials({
     access_token: accessToken,
@@ -59,37 +91,40 @@ async function scanGmailSubscriptions({ accessToken, refreshToken, sinceDays = 1
 
   const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
   const query = buildQuery(sinceDays)
+
   const listResponse = await gmail.users.messages.list({
     userId: 'me',
     q: query,
     maxResults,
   })
 
-  const messages = listResponse.data.messages || []
+  const messages = listResponse.data.messages ?? []
   const results = []
 
   for (const message of messages) {
     const details = await gmail.users.messages.get({
       userId: 'me',
-      id: message.id,
+      id: message.id!,
       format: 'full',
     })
 
-    const payload = details.data.payload || {}
-    const headers = payload.headers || []
+    const payload = (details.data.payload ?? {}) as GmailPayload
+    const headers = payload.headers ?? []
     const subject = findHeader(headers, 'Subject')
     const from = findHeader(headers, 'From')
-    const receivedAt = findHeader(headers, 'Date') || new Date(details.data.internalDate || Date.now()).toISOString()
-    let body = extractTextFromPayload(payload)
+    const receivedAt =
+      findHeader(headers, 'Date') ??
+      new Date(Number(details.data.internalDate) || Date.now()).toISOString()
+
+    let body: string | null = extractTextFromPayload(payload)
 
     const parsed = parseSubscriptionEmail({ subject, from, body })
-    if (!parsed) {
-      continue
-    }
+    if (!parsed) continue
 
     const contentHash = hashContent(body)
-    // Discard raw email content after hashing/parsing.
+    // Discard raw email content after hashing/parsing
     body = null
+
     const proofHash = generateProofHash({
       provider: 'gmail',
       messageId: details.data.id,
@@ -121,24 +156,24 @@ async function scanGmailSubscriptions({ accessToken, refreshToken, sinceDays = 1
   return results
 }
 
-function buildQuery(sinceDays) {
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+function buildQuery(sinceDays: number): string {
   const keywordQuery = KEYWORDS.map((keyword) => `"${keyword}"`).join(' OR ')
   const baseQuery = `(${keywordQuery})`
-  if (!sinceDays) {
-    return baseQuery
-  }
+  if (!sinceDays) return baseQuery
   return `${baseQuery} newer_than:${sinceDays}d`
 }
 
-function findHeader(headers, name) {
-  const match = headers.find((header) => header.name.toLowerCase() === name.toLowerCase())
-  return match ? match.value : null
+function findHeader(headers: GmailHeader[], name: string): string {
+  const match = headers.find((h) => h.name.toLowerCase() === name.toLowerCase())
+  return match ? match.value : ''
 }
 
-function extractTextFromPayload(payload) {
+function extractTextFromPayload(payload: GmailPayload): string {
   const parts = collectParts(payload)
-  const plainParts = parts.filter((part) => part.mimeType === 'text/plain')
-  const htmlParts = parts.filter((part) => part.mimeType === 'text/html')
+  const plainParts = parts.filter((p) => p.mimeType === 'text/plain')
+  const htmlParts = parts.filter((p) => p.mimeType === 'text/html')
   const sources = plainParts.length ? plainParts : htmlParts
 
   const decoded = sources
@@ -146,15 +181,13 @@ function extractTextFromPayload(payload) {
     .filter(Boolean)
     .join('\n')
 
-  if (plainParts.length) {
-    return decoded
-  }
+  if (plainParts.length) return decoded
 
   return decoded.replace(/<[^>]+>/g, ' ')
 }
 
-function collectParts(payload) {
-  const parts = []
+function collectParts(payload: GmailPayload): GmailPayload[] {
+  const parts: GmailPayload[] = []
   if (payload?.mimeType && payload.body?.data) {
     parts.push(payload)
   }
@@ -166,17 +199,8 @@ function collectParts(payload) {
   return parts
 }
 
-function decodeBase64(data) {
-  if (!data) {
-    return ''
-  }
+function decodeBase64(data?: string): string {
+  if (!data) return ''
   const normalized = data.replace(/-/g, '+').replace(/_/g, '/')
   return Buffer.from(normalized, 'base64').toString('utf8')
-}
-
-module.exports = {
-  getGmailAuthUrl,
-  exchangeGmailCodeForTokens,
-  getGmailProfile,
-  scanGmailSubscriptions,
 }

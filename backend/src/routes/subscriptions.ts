@@ -848,6 +848,8 @@ router.get('/trials/saved-metric', async (req: AuthenticatedRequest, res: Respon
  *       404:
  *         description: Not found
  * Generates a standard BIP39 12-word mnemonic phrase.
+export function generateMnemonic(): string {
+  return bip39.generateMnemonic(128);
  * Validates a given mnemonic phrase (must be 12 words).
  */
 router.get("/:id", validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
@@ -1373,6 +1375,9 @@ router.post("/bulk", validateBulkSubscriptionOwnership, async (req: Authenticate
       success: false,
       error: error instanceof Error ? error.message : "Failed to perform bulk operation",
     });
+  const words = mnemonic.trim().split(/\s+/);
+  if (words.length !== 12) {
+    return false;
   }
 });
 

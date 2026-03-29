@@ -12,7 +12,11 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "validate-env": "node scripts/validate-env.js",
     "test": "jest",
-    "swagger:export": "ts-node scripts/export-swagger.ts"
+    "swagger:export": "ts-node scripts/export-swagger.ts",
+    "db:migrate": "supabase db push",
+    "db:migrate:prod": "supabase db push --db-url \"$PRODUCTION_DB_URL\"",
+    "db:reset": "supabase db reset",
+    "db:new": "supabase migration new"
   },
   "dependencies": {
     "@sentry/node": "^10.46.0",

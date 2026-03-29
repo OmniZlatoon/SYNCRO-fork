@@ -295,6 +295,7 @@ impl SubscriptionRenewalContract {
         PauseToggled { paused }.publish(&env);
     }
 
+    /// Query the current pause state.
     pub fn is_paused(env: Env) -> bool {
         env.storage()
             .instance()
@@ -302,6 +303,7 @@ impl SubscriptionRenewalContract {
             .unwrap_or(false)
     }
 
+    // ── Subscription logic ────────────────────────────────────────
     /// Set the logging contract address. Admin only.
     pub fn set_logging_contract(env: Env, address: Address) {
         Self::require_admin(&env);
@@ -567,6 +569,22 @@ impl SubscriptionRenewalContract {
             approval_id,
             max_spend,
             expires_at,
+    FeeConfig,
+    LoggingContract,
+}    /// Admin function to manage the protocol fee configuration.
+    /// `percentage` is in basis points (e.g., 500 = 5%), max 10000.
+    pub fn set_fee_config(env: Env, percentage: u32, recipient: Address) {
+        Self::require_admin(&env);
+        if percentage > 10000 {
+            panic!("Fee percentage exceeds 100%");
+        }
+
+        let config = FeeConfig { percentage, recipient: recipient.clone() };
+        env.storage().instance().set(&ContractKey::FeeConfig, &config);
+
+        FeeConfigUpdated {
+            percentage,
+            recipient,
         }
         .publish(&env);
     }
@@ -902,8 +920,15 @@ impl SubscriptionRenewalContract {
 
             false
         }
+    /// Retrieve the current fee configuration
+    pub fn get_fee_config(env: Env) -> Option<FeeConfig> {
+        env.storage().instance().get(&ContractKey::FeeConfig)
     }
 
+    /// Set the logging contract address. Admin only.
+    pub fn set_logging_contract(env: Env, address: Address) {
+        Self::require_admin(&env);
+        env.storage()
     // ── Internal helpers ──────────────────────────────────────────
 
     fn record_log(env: &Env, sub_id: u64, event_type: u32, data_str: soroban_sdk::String) {

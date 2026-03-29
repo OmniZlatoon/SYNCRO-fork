@@ -49,6 +49,8 @@ import {
 } from "@/lib/subscription-utils";
 import { checkBudgetAlerts } from "@/lib/budget-utils";
 
+import { analyticsApi, AnalyticsSummary } from "@/lib/api/analytics";
+
 interface AppClientProps {
     initialSubscriptions: DBSubscription[];
     initialEmailAccounts: any[];
@@ -62,6 +64,9 @@ export function AppClient({
     initialPriceChanges = [],
     initialConsolidationSuggestions = [],
 }: AppClientProps) {
+    // Analytics state
+    const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummary | undefined>(undefined);
+
     // App state
     const [mode, setMode] = useState<
         "welcome" | "individual" | "enterprise" | "enterprise-setup"
@@ -220,6 +225,18 @@ export function AppClient({
     }, [currency]);
 
     useEffect(() => {
+        async function fetchAnalytics() {
+            try {
+                const summary = await analyticsApi.getSummary();
+                setAnalyticsSummary(summary);
+            } catch (error) {
+                console.error("Failed to fetch analytics summary:", error);
+            }
+        }
+        fetchAnalytics();
+    }, [subscriptions]);
+
+    useEffect(() => {
         setIsLoadingSubscriptions(false);
     }, []);
 
@@ -309,6 +326,28 @@ export function AppClient({
             description: `Your plan has been upgraded to ${newPlan}`,
             variant: "success",
         });
+    };
+
+    const handleBudgetChange = async (limit: number) => {
+        setBudgetLimit(limit);
+        try {
+            await analyticsApi.upsertBudget({ overall_limit: limit });
+            // Refresh analytics summary to reflect the new budget
+            const summary = await analyticsApi.getSummary();
+            setAnalyticsSummary(summary);
+            showToast({
+                title: "Budget updated",
+                description: `Your monthly budget has been set to ${limit}`,
+                variant: "success",
+            });
+        } catch (error) {
+            console.error("Failed to update budget:", error);
+            showToast({
+                title: "Error",
+                description: "Failed to update budget on server",
+                variant: "error",
+            });
+        }
     };
 
     const handleManageSubscription = (subscription: any) => {
@@ -497,6 +536,7 @@ export function AppClient({
                             <DashboardPage
                                 subscriptions={subscriptions}
                                 totalSpend={totalSpend}
+                                summary={analyticsSummary}
                                 insights={notifications}
                                 onViewInsights={handleViewInsights}
                                 onRenew={handleRenewSubscription}
@@ -528,11 +568,16 @@ export function AppClient({
                             />
                         )}
                         {activeView === "analytics" && (
-                            <AnalyticsPage
-                                subscriptions={subscriptions}
-                                totalSpend={totalSpend}
-                                darkMode={darkMode}
-                            />
+                            analyticsSummary ? (
+                                <AnalyticsPage
+                                    summary={analyticsSummary}
+                                    darkMode={darkMode}
+                                />
+                            ) : (
+                                <div className="flex items-center justify-center py-20">
+                                    <LoadingSpinner size="lg" darkMode={darkMode} />
+                                </div>
+                            )
                         )}
                         {activeView === "integrations" && (
                             <IntegrationsPage
@@ -556,7 +601,7 @@ export function AppClient({
                                 onUpgradeToTeam={handleUpgradeToTeam}
                                 onUpgrade={handleUpgradePlan}
                                 budgetLimit={budgetLimit}
-                                onBudgetChange={setBudgetLimit}
+                                onBudgetChange={handleBudgetChange}
                                 darkMode={darkMode}
                                 currency={currency}
                                 onCurrencyChange={(c: Currency) => setCurrency(c)}

@@ -1,113 +1,119 @@
-# Contributing to Synchro
+# Contributing to SYNCRO
 
-Thank you for your interest in contributing to Synchro! This document outlines the contribution guidelines and branch protection policies to ensure code quality and maintain a stable main branch.
+Thank you for your interest in contributing! This guide will help you set up the project, follow conventions, and submit high-quality contributions.
 
-## Branch Protection Rules
+---
 
-To maintain code quality and prevent broken code from reaching production, the `main` branch is protected with the following rules:
+## Development Setup
 
-### Required Protections
+### Prerequisites
 
-#### 1. Require a Pull Request Before Merging
-- **Direct pushes to `main` are blocked** — all changes must go through a pull request
-- This ensures every change is reviewed and validated before reaching production
+- Node.js >= 20
+- npm or yarn
+- Supabase CLI (for database)
+- (Optional) Stellar CLI for contract interactions
 
-#### 2. Require Status Checks to Pass Before Merging
-All of the following CI jobs must pass before a PR can be merged:
-- `typecheck-backend` — TypeScript type checking for backend
-- `typecheck-client` — TypeScript type checking for frontend
-- `lint-backend` — Linting checks for backend code
-- `lint-client` — Linting checks for frontend code
-- `test-backend` — Unit and integration tests for backend
+---
 
-**Why this matters:** Failed CI checks indicate broken code, merge conflicts, or TypeScript errors that would break production. Requiring passing checks prevents deployment failures.
-
-#### 3. Require Branches to Be Up to Date Before Merging
-- PRs must be rebased or merged with the latest `main` branch
-- This prevents stale PRs from introducing merge conflicts
-
-#### 4. Do Not Allow Bypassing Branch Protection
-- These rules apply to everyone, including repository admins
-- This ensures consistency and prevents accidental pushes to main
-
-## Contribution Workflow
-
-### Step 1: Create a Feature Branch
-Branch naming convention: `feature/description` or `fix/description`
+### Clone and Install
 
 ```bash
-git checkout main
-git pull origin main
-git checkout -b feature/your-feature-name
+git clone https://github.com/<your-username>/SYNCRO.git
+cd SYNCRO
 ```
 
-### Step 2: Make Your Changes
-- Write clean, well-documented code
-- Follow the project's coding standards
-- Ensure all code passes local checks:
+### Backend Setup
+```bash
+cd backend
+cp .env.example .env   # Fill in required values
+npm install
+npm run dev
+```
+
+### Client Setup
+```bash
+cd client
+cp .env.example .env.local   # Fill in required values
+npm install
+npm run dev
+```
+
+### Database Setup
+```bash
+supabase start
+supabase db push
+```
+
+## Environment Variables
+Environment variables are defined in `.env.example`.
+
+Key variables include:
+
+- `SUPABASE_URL` – Supabase project URL
+- `SUPABASE_KEY` – API key
+- `JWT_SECRET` – Secret for authentication
+- `REDIS_URL` – Redis connection (if used)
+- `EMAIL_SERVICE` – SMTP configuration
+
+> Ensure all required variables are set before running the app.
+
+
+## Branch Naming Convention
+Use the following format:
 
 ```bash
-# For backend changes
-npm run typecheck:backend
-npm run lint:backend
-npm run test:backend
-
-# For frontend changes
-npm run typecheck:client
-npm run lint:client
+feat/add-feature-name
+fix/bug-description
+chore/update-dependencies
+docs/update-readme
+test/add-unit-tests
 ```
 
-### Step 3: Commit Your Changes
-Use descriptive commit messages:
+## Branch Naming Convention
+Use the following format:
 
 ```bash
-git add .
-git commit -m "feat: Add descriptive message about your changes"
+feat/add-feature-name
+fix/bug-description
+chore/update-dependencies
+docs/update-readme
+test/add-unit-tests
 ```
 
-Follow conventional commit format:
-- `feat:` for new features
-- `fix:` for bug fixes
-- `docs:` for documentation
-- `refactor:` for code refactoring
-- `test:` for adding/updating tests
-- `chore:` for maintenance tasks
-
-### Step 4: Push to Your Fork
+## Pull Request Guidelines
+- Reference the issue:
 ```bash
-git push origin feature/your-feature-name
+Closes #<issue-number>
 ```
+- Ensure all tests pass
+- Include a clear description of changes
+- Add a test plan (how reviewers can verify)
+- Keep PRs focused and small
 
-### Step 5: Create a Pull Request
-- Go to the main repository (not your fork)
-- Click "New Pull Request"
-- Select your feature branch as the source
-- Fill in the PR title and description
-- Reference any related issues with `#issue-number`
 
-### Step 6: Address Review Feedback
-- Wait for CI checks to pass (required)
-- Wait for code review (highly recommended)
-- Make requested changes and push updates
-- Ensure the branch is up to date with main before merging
+## Code Review Standards
 
-## Enforcement
+### TypeScript
+- No `any` types
+- Avoid unsafe non-null assertions
 
-⚠️ **Important Notes:**
+### Security
+- No hardcoded secrets
+- Validate all inputs (use Zod where applicable)
 
-1. **You cannot push directly to main** — any attempt will be rejected by GitHub
-2. **Your PR must pass all CI checks** — you cannot merge with failing tests or TypeScript errors
-3. **Your branch must be up to date** — you cannot merge if your branch is behind main
-4. **These rules apply to everyone** — including maintainers and admins
+### Testing
+Required for:
+- New endpoints
+- Bug fixes
+- Business logic
 
-## Why These Protections Exist
+## Before Submitting
+ - Code builds successfully (npm run build)
+ - Tests pass (npm test)
+ - Environment variables configured
+ - No lint or type errors
+ - PR description completed
 
-Previously, broken code, TypeScript errors, and merge conflicts reached the main branch, causing Vercel deployment failures. These protections prevent that by:
-
-- **Catching errors early:** CI checks catch TypeScript and linting errors before they reach production
-- **Ensuring review:** PRs require review, preventing one-person mistakes
-- **Maintaining branch hygiene:** Requires up-to-date branches prevent merge conflicts
-- **Protecting main:** No one can bypass these rules, ensuring consistency
 
 ## Questions or Issues?
 

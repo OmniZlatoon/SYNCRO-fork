@@ -102,3 +102,30 @@ export interface ListSubscriptionsResult {
   subscriptions: Subscription[];
   total: number;
 }
+
+// ── Notification Preference Types ────────────────────────────────────────────
+
+export type NotificationChannel = 'email' | 'push' | 'telegram' | 'slack';
+
+export interface SubscriptionNotificationPreferences {
+  subscription_id: string;
+  reminder_days_before: number[];
+  channels: NotificationChannel[];
+  muted: boolean;
+  muted_until: string | null;
+  custom_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationPreferencesUpdateInput {
+  reminder_days_before?: number[];
+  channels?: NotificationChannel[];
+  muted?: boolean;
+  muted_until?: string | null;
+  custom_message?: string | null;
+}
+
+export interface SnoozeInput {
+  until: string; // ISO date string e.g. '2025-04-01'
+}

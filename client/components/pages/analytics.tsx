@@ -21,8 +21,12 @@ import { Progress } from "@/components/ui/progress"
 interface AnalyticsPageProps {
   summary: AnalyticsSummary
   darkMode?: boolean
+  mode?: string
+  savedBySyncroCount?: number
 }
 
+export default function AnalyticsPage({ subscriptions, totalSpend, darkMode, mode = "individual", savedBySyncroCount = 0 }: AnalyticsPageProps) {
+  const [view, setView] = useState("default") // 'default', 'calendar', 'comparison'
 export default function AnalyticsPage({ summary, darkMode }: AnalyticsPageProps) {
   const [view, setView] = useState("default")
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -137,6 +141,53 @@ export default function AnalyticsPage({ summary, darkMode }: AnalyticsPageProps)
         </div>
       </div>
 
+      {/* Saved by SYNCRO metric */}
+      {savedBySyncroCount > 0 && (
+        <div className={`border rounded-xl p-6 flex items-center gap-5 ${darkMode ? "bg-[#2D3748] border-[#374151]" : "bg-white border-gray-200"}`}>
+          <div className="text-4xl" aria-hidden="true">🛡️</div>
+          <div>
+            <h3 className={`text-lg font-semibold ${darkMode ? "text-white" : "text-[#1E2A35]"}`}>
+              Saved by SYNCRO
+            </h3>
+            <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+              You cancelled <span className="font-bold text-[#007A5C]">{savedBySyncroCount}</span> trial{savedBySyncroCount !== 1 ? "s" : ""} before being auto-charged — nice work.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Calendar View */}
+      {view === "calendar" && (
+        <div
+          className={`border rounded-xl p-6 ${darkMode ? "bg-[#2D3748] border-[#374151]" : "bg-white border-gray-200"}`}
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h3 className={`text-lg font-semibold ${darkMode ? "text-white" : "text-[#1E2A35]"}`}>Renewal Calendar</h3>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={previousMonth}
+                className={`p-2 rounded-lg ${darkMode ? "hover:bg-[#374151]" : "hover:bg-gray-100"}`}
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <span className={`font-medium ${darkMode ? "text-white" : "text-[#1E2A35]"}`}>{monthName}</span>
+              <button
+                onClick={nextMonth}
+                className={`p-2 rounded-lg ${darkMode ? "hover:bg-[#374151]" : "hover:bg-gray-100"}`}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Calendar Grid */}
+          <div className="grid grid-cols-7 gap-2">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+              <div
+                key={day}
+                className={`text-center text-sm font-medium py-2 ${darkMode ? "text-gray-400" : "text-gray-600"}`}
+              >
+                {day}
       {/* Top Subscriptions */}
       <div className={`p-6 rounded-xl border ${darkMode ? "bg-[#2D3748] border-[#374151]" : "bg-white border-gray-200"}`}>
         <h3 className={`font-semibold mb-6 ${darkMode ? "text-white" : "text-gray-900"}`}>Top Subscriptions (Monthly)</h3>

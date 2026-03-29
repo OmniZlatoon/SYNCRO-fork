@@ -31,6 +31,7 @@ export class SchedulerService {
         logger.info('Running scheduled reminder scheduling');
         try {
           await reminderEngine.scheduleReminders();
+          await reminderEngine.scheduleTrialReminders();
         } catch (error) {
           logger.error('Error in scheduled reminder scheduling:', error);
         }

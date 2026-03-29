@@ -19,6 +19,8 @@ export interface Subscription {
   is_trial: boolean
   trial_ends_at?: string
   price_after_trial?: number
+  trial_converts_to_price?: number
+  credit_card_required?: boolean
   source: string
   manually_edited: boolean
   edited_fields: string[]

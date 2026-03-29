@@ -423,6 +423,81 @@ export class ReminderEngine {
     }
   }
 
+  // Trial reminder windows (days before trial ends)
+  private static readonly TRIAL_REMINDER_DAYS = [14, 7, 3, 1, 0];
+
+  /**
+   * Schedule trial-specific reminders for active trial subscriptions.
+   * Uses more aggressive windows than regular renewals.
+   * Credit-card-required trials get the full 14-day early warning.
+   */
+  async scheduleTrialReminders(): Promise<void> {
+    logger.info('Scheduling trial reminders');
+
+    try {
+      const { data: trials, error } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('is_trial', true)
+        .in('status', ['active'])
+        .not('trial_ends_at', 'is', null)
+        .gt('trial_ends_at', new Date().toISOString());
+
+      if (error) throw error;
+      if (!trials || trials.length === 0) {
+        logger.info('No active trials to schedule reminders for');
+        return;
+      }
+
+      logger.info(`Found ${trials.length} active trials`);
+
+      for (const sub of trials) {
+        const trialEnd = new Date(sub.trial_ends_at);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Credit-card-required trials get all windows; others skip the 14-day one
+        const windows = sub.credit_card_required
+          ? ReminderEngine.TRIAL_REMINDER_DAYS
+          : ReminderEngine.TRIAL_REMINDER_DAYS.filter((d) => d !== 14);
+
+        for (const days of windows) {
+          const reminderDate = new Date(trialEnd);
+          reminderDate.setDate(reminderDate.getDate() - days);
+          reminderDate.setHours(0, 0, 0, 0);
+
+          if (reminderDate >= today) {
+            const { data: existing } = await supabase
+              .from('reminder_schedules')
+              .select('id')
+              .eq('subscription_id', sub.id)
+              .eq('reminder_type', 'trial_expiry')
+              .eq('days_before', days)
+              .eq('status', 'pending')
+              .single();
+
+            if (!existing) {
+              await supabase.from('reminder_schedules').insert({
+                subscription_id: sub.id,
+                user_id: sub.user_id,
+                reminder_date: reminderDate.toISOString().split('T')[0],
+                reminder_type: 'trial_expiry',
+                days_before: days,
+                status: 'pending',
+              });
+              logger.debug(`Scheduled trial reminder for ${sub.id} (${days} days before)`);
+            }
+          }
+        }
+      }
+
+      logger.info('Trial reminder scheduling completed');
+    } catch (error) {
+      logger.error('Error scheduling trial reminders:', error);
+      throw error;
+    }
+  }
+
   /**
    * Resolve the effective notification preferences for a subscription.
    * Priority: per-subscription override → user global settings → engine defaults

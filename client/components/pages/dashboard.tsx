@@ -1,7 +1,8 @@
 "use client"
 
-import { ArrowRight, Mail, Sparkles, Package } from "lucide-react"
+import { ArrowRight, Mail, Sparkles, Package, FlaskConical } from "lucide-react"
 import { useState } from "react"
+import { TrialSection } from "./trial-section"
 import { formatCurrency, convertCurrency, getCurrencySymbol, type Currency } from "@/lib/currency-utils"
 
 import { AnalyticsSummary } from "@/lib/api/analytics"
@@ -54,6 +55,14 @@ export default function DashboardPage({
   const [filterEmail, setFilterEmail] = useState("all")
   const [filterType, setFilterType] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
+  // Local trial list so cancel/convert removes the card immediately
+  const [activeTrials, setActiveTrials] = useState<any[]>(
+    () => (trialSubscriptions ?? subscriptions.filter((s: any) => s.isTrial && s.status === "active"))
+  )
+
+  const handleTrialAction = (_id: number, _action: "convert" | "cancel") => {
+    setActiveTrials((prev) => prev.filter((t) => t.id !== _id))
+  }
 
   const emailAccountsList = ["all", ...new Set(subscriptions.map((s) => s.email).filter(Boolean))]
 
@@ -284,6 +293,13 @@ export default function DashboardPage({
       {/* Subscriptions Grid */}
       {!hasNoResults && (
         <>
+          {/* Active Trials Section */}
+          <TrialSection
+            trials={activeTrials}
+            darkMode={darkMode}
+            onTrialAction={handleTrialAction}
+          />
+
           {/* AI Tools Section */}
           {filterType !== "other" && aiSubs.length > 0 && (
             <div className="mb-8">

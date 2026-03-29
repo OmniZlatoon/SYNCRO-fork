@@ -44,6 +44,12 @@ export interface Subscription {
   notes: string | null;
   tags: string[];
   expired_at: string | null;
+  active_until: string | null;
+  // Trial tracking fields
+  is_trial: boolean;
+  trial_ends_at: string | null;
+  trial_converts_to_price: number | null;
+  credit_card_required: boolean;
   created_at: string;
   updated_at: string;
 }

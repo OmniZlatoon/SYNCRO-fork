@@ -9,6 +9,7 @@ import CSVImportModal from "@/components/modals/csv-import-modal"
 import { useDebounce } from "@/hooks/use-debounce"
 import { VirtualizedList } from "@/components/ui/virtualized-list"
 import { EmptyState } from "@/components/ui/empty-state"
+import { ErrorBoundary } from "@/components/ui/error-boundary"
 import CancellationGuideModal from "@/components/modals/cancellation-guide-modal"
 import { fetchAllCancellationGuides, type CancellationGuide } from "@/lib/supabase/cancellation-guides"
 
@@ -460,24 +461,41 @@ export default function SubscriptionsPage({
               itemHeight={80}
               containerHeight={600}
               renderItem={(sub: any, index: number) => (
-                <SubscriptionCard
-                  key={sub.id}
-                  subscription={sub}
-                  onDelete={onDelete}
-                  onManage={onManage}
-                  selectedSubscriptions={selectedSubscriptions}
-                  onToggleSelect={onToggleSelect}
-                  darkMode={darkMode}
-                  isDuplicate={duplicates.some((dup: any) => dup.subscriptions.some((s: any) => s.id === sub.id))}
-                  unusedInfo={unusedSubscriptions.find((unused: any) => unused.id === sub.id)}
-                />
+                <ErrorBoundary 
+                  fallback={<BrokenCardPlaceholder name={sub?.name} darkMode={darkMode} />}
+                >
+                  <SubscriptionCard
+                    key={sub.id}
+                    subscription={sub}
+                    onDelete={onDelete}
+                    onManage={onManage}
+                    selectedSubscriptions={selectedSubscriptions}
+                    onToggleSelect={onToggleSelect}
+                    darkMode={darkMode}
+                    isDuplicate={duplicates.some((dup: any) => dup.subscriptions.some((s: any) => s.id === sub.id))}
+                    unusedInfo={unusedSubscriptions.find((unused: any) => unused.id === sub.id)}
+                  />
+                </ErrorBoundary>
               )}
             />
           ) : (
             <div className="space-y-3">
               {filtered.map((sub: any) => (
-                <SubscriptionCard
+                <ErrorBoundary 
                   key={sub.id}
+                  fallback={<BrokenCardPlaceholder name={sub?.name} darkMode={darkMode} />}
+                >
+                  <SubscriptionCard
+                    subscription={sub}
+                    onDelete={onDelete}
+                    onManage={onManage}
+                    selectedSubscriptions={selectedSubscriptions}
+                    onToggleSelect={onToggleSelect}
+                    darkMode={darkMode}
+                    isDuplicate={duplicates.some((dup: any) => dup.subscriptions.some((s: any) => s.id === sub.id))}
+                    unusedInfo={unusedSubscriptions.find((unused: any) => unused.id === sub.id)}
+                  />
+                </ErrorBoundary>
                   subscription={sub}
                   onDelete={onDelete}
                   onManage={onManage}
@@ -788,6 +806,31 @@ export function SubscriptionCard({
             <Trash2 aria-hidden="true" className="w-4 h-4" />
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function BrokenCardPlaceholder({ name, darkMode }: { name?: string; darkMode?: boolean }) {
+  return (
+    <div
+      className={`${darkMode ? "bg-[#2D3748] border-[#374151]" : "bg-white border-gray-200"} border rounded-xl p-5 flex items-center justify-between opacity-70`}
+    >
+      <div className="flex items-center gap-4 flex-1">
+        <div className={`w-12 h-12 ${darkMode ? "bg-[#1E2A35]" : "bg-gray-100"} rounded-lg flex items-center justify-center`}>
+          <AlertCircle className="w-6 h-6 text-destructive" />
+        </div>
+        <div>
+          <h4 className={`font-semibold ${darkMode ? "text-white" : "text-gray-900"}`}>
+            {name || "Subscription"} (Error)
+          </h4>
+          <p className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+            This component failed to load.
+          </p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>Unavailable</p>
       </div>
     </div>
   )

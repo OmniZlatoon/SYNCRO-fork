@@ -45,8 +45,8 @@
     "redis": "^5.11.0",
     "uuid": "^13.0.0",
     "web-push": "^3.6.7",
-    "winston": "^3.14.0",
-    "winston-daily-rotate-file": "^5.0.0",
+    "bip39": "^3.1.0",
+    "swagger-jsdoc": "^6.2.8",
     "zod": "^3.23.8"
   },
   "devDependencies": {

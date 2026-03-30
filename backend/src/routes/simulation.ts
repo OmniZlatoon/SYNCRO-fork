@@ -1,116 +1,33 @@
 import { Router, Response } from 'express';
+import { z } from 'zod';
 import { simulationService } from '../services/simulation-service';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
-import logger from '../config/logger';
+import { validateRequest } from '../utils/validation';
 
-const router: Router = Router();
-
-// All routes require authentication
+const router = Router();
 router.use(authenticate);
 
+const simulationQuerySchema = z.object({
+  days: z.preprocess((val) => parseInt(val as string, 10), z.number().int().min(1).max(365)).default(30),
+  balance: z.preprocess((val) => val === undefined ? undefined : parseFloat(val as string), z.number().optional()),
+});
+
 /**
- * @openapi
- * /api/simulation:
- *   get:
- *     tags: [Simulation]
- *     summary: Generate a billing simulation
- *     description: Projects upcoming billing charges for the authenticated user.
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: days
- *         schema: { type: integer, minimum: 1, maximum: 365, default: 30 }
- *         description: Number of days to project
- *       - in: query
- *         name: balance
- *         schema: { type: number }
- *         description: Current balance for risk assessment
- *     responses:
- *       200:
- *         description: Simulation result
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success: { type: boolean }
- *                 data: { type: object }
- *       400:
- *         description: Invalid query parameters
- *       401:
- *         description: Unauthorized
+ * GET /api/simulation
  */
 router.get('/', async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    // Parse and validate query parameters
-    const daysParam = req.query.days as string | undefined;
-    const balanceParam = req.query.balance as string | undefined;
+  const { days, balance } = validateRequest(simulationQuerySchema, req.query);
 
-    let days = 30; // Default value
-    if (daysParam) {
-      const parsedDays = parseInt(daysParam, 10);
-      
-      if (isNaN(parsedDays)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Days parameter must be a valid number',
-        });
-      }
-      
-      if (parsedDays < 1 || parsedDays > 365) {
-        return res.status(400).json({
-          success: false,
-          error: 'Days parameter must be between 1 and 365',
-        });
-      }
-      
-      days = parsedDays;
-    }
+  const result = await simulationService.generateSimulation(
+    req.user!.id,
+    days,
+    balance
+  );
 
-    // Parse balance if provided
-    let balance: number | undefined;
-    if (balanceParam) {
-      const parsedBalance = parseFloat(balanceParam);
-      
-      if (isNaN(parsedBalance)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Balance parameter must be a valid number',
-        });
-      }
-      
-      balance = parsedBalance;
-    }
-
-    // Generate simulation
-    const result = await simulationService.generateSimulation(
-      req.user!.id,
-      days,
-      balance
-    );
-
-    res.json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    logger.error('Simulation generation error:', error);
-    
-    // Handle validation errors
-    if (error instanceof Error && error.message.includes('must be between')) {
-      return res.status(400).json({
-        success: false,
-        error: error.message,
-      });
-    }
-    
-    // Handle other errors
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to generate simulation',
-    });
-  }
+  res.json({
+    success: true,
+    data: result,
+  });
 });
 
 export default router;

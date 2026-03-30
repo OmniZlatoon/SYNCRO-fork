@@ -39,12 +39,29 @@ const options: swaggerJSDoc.Options = {
             success: { type: 'boolean', example: true },
           },
         },
-        ErrorResponse: {
+        ProblemDetails: {
           type: 'object',
           properties: {
-            success: { type: 'boolean', example: false },
-            error: { type: 'string' },
+            type: { type: 'string', format: 'uri', example: 'https://syncro.app/errors/not-found' },
+            title: { type: 'string', example: 'Not Found' },
+            status: { type: 'integer', example: 404 },
+            detail: { type: 'string', example: 'Subscription with ID 123 not found.' },
+            instance: { type: 'string', example: '/api/v1/subscriptions/123' },
+            requestId: { type: 'string', example: 'req-abc-123' },
+            errors: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  field: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
           },
+        },
+        ErrorResponse: {
+          $ref: '#/components/schemas/ProblemDetails',
         },
         Pagination: {
           type: 'object',

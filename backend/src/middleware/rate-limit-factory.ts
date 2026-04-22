@@ -88,6 +88,7 @@ export class RateLimiterFactory {
       message: rateLimitConfig.teamInvite.message,
       standardHeaders: true,
       legacyHeaders: true,
+      validate: false,
       keyGenerator: userKeyGenerator,
       store: this.redisStore || undefined,
       handler: (req, res, _next) => {
@@ -113,6 +114,7 @@ export class RateLimiterFactory {
       message: rateLimitConfig.mfa.message,
       standardHeaders: true,
       legacyHeaders: true,
+      validate: false,
       keyGenerator: userKeyGenerator,
       store: this.redisStore || undefined,
       handler: (req, res, _next) => {
@@ -138,6 +140,7 @@ export class RateLimiterFactory {
       message: rateLimitConfig.admin.message,
       standardHeaders: true,
       legacyHeaders: true,
+      validate: false,
       keyGenerator: ipKeyGenerator,
       store: this.redisStore || undefined,
       handler: (req, res, _next) => {
@@ -163,6 +166,7 @@ export class RateLimiterFactory {
       message: config.message,
       standardHeaders: true,
       legacyHeaders: true,
+      validate: false,
       keyGenerator: config.keyGenerator || ipKeyGenerator,
       store: this.redisStore || undefined,
       handler: (req, res, _next) => {

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Edit2, Trash2, Mail, Clock, Copy, ShieldAlert, CheckCircle, Lock, Users, Calendar, Check, Download, FileText, Upload, AlertCircle } from "lucide-react"
+import { Edit2, Trash2, Mail, Clock, Copy, ShieldAlert, CheckCircle, Lock, Users, Calendar, Check, Download, FileText, Upload, AlertCircle, Keyboard } from "lucide-react"
 import { exportAllCSV, exportActiveCSV, exportDateRangeCSV } from "@/lib/csv-export"
 import { downloadSubscriptionPDF } from "@/lib/pdf-report"
 import CSVImportModal from "@/components/modals/csv-import-modal"
@@ -13,6 +13,8 @@ import { ErrorBoundary } from "@/components/ui/error-boundary"
 import CancellationGuideModal from "@/components/modals/cancellation-guide-modal"
 import { fetchAllCancellationGuides, type CancellationGuide } from "@/lib/supabase/cancellation-guides"
 import { StatusBadge, normalizeStatus } from "@/components/ui/status-badge"
+import { AdvancedFilterBar, type FilterState, EMPTY_FILTERS, hasActiveFilters } from "@/components/ui/advanced-filter-bar"
+import { KeyboardHelpModal } from "@/components/modals/keyboard-help-modal"
 
 interface SubscriptionsPageProps {
   subscriptions?: any[]
@@ -48,10 +50,10 @@ export default function SubscriptionsPage({
   const [searchTerm, setSearchTerm] = useState("")
   const debouncedSearchTerm = useDebounce(searchTerm, 300)
   const [isSearching, setIsSearching] = useState(false)
-  const [filterCategory, setFilterCategory] = useState("all")
-  const [filterStatus, setFilterStatus] = useState("all")
+  const [advancedFilters, setAdvancedFilters] = useState<FilterState>(EMPTY_FILTERS)
   const [filterEmail, setFilterEmail] = useState("all")
   const [sortBy, setSortBy] = useState("name")
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false)
   const [showUnusedOnly, setShowUnusedOnly] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
@@ -67,6 +69,20 @@ export default function SubscriptionsPage({
     }
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // '?' opens keyboard help modal (only when not typing in an input)
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return
+      if (e.key === "?") {
+        e.preventDefault()
+        setShowKeyboardHelp((v) => !v)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
   }, [])
 
   const handleExportPDF = async () => {
@@ -100,8 +116,7 @@ export default function SubscriptionsPage({
   const [copied, setCopied] = useState(false)
 
   const emailAccountsList = ["all", ...new Set((subscriptions || []).map((s: any) => s.email).filter(Boolean))]
-  const categories = ["all", ...new Set((subscriptions || []).map((s: any) => s.category))]
-  const statuses = ["all", "active", "trial", "expiring", "expired"]
+  const categories = [...new Set((subscriptions || []).map((s: any) => s.category).filter(Boolean))]
 
   useEffect(() => {
     if (searchTerm !== debouncedSearchTerm) {
@@ -133,21 +148,26 @@ export default function SubscriptionsPage({
 
   const filtered = (subscriptions || []).filter((sub: any) => {
     const matchesSearch = sub.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
-    const matchesCategory = filterCategory === "all" || sub.category === filterCategory
-    const matchesStatus = filterStatus === "all" || sub.status === filterStatus
+    const matchesCategory =
+      advancedFilters.categories.length === 0 || advancedFilters.categories.includes(sub.category)
+    const matchesStatus =
+      advancedFilters.statuses.length === 0 || advancedFilters.statuses.includes(sub.status)
     const matchesEmail = filterEmail === "all" || sub.email === filterEmail
+    const matchesPrice =
+      advancedFilters.priceRange === null ||
+      (sub.price >= advancedFilters.priceRange[0] && sub.price < advancedFilters.priceRange[1])
 
     if (showDuplicatesOnly) {
       const isDuplicate = (duplicates || []).some((dup: any) => dup.subscriptions.some((s: any) => s.id === sub.id))
-      return matchesSearch && matchesCategory && matchesStatus && matchesEmail && isDuplicate
+      return matchesSearch && matchesCategory && matchesStatus && matchesEmail && matchesPrice && isDuplicate
     }
 
     if (showUnusedOnly) {
       const isUnused = (unusedSubscriptions || []).some((unused: any) => unused.id === sub.id)
-      return matchesSearch && matchesCategory && matchesStatus && matchesEmail && isUnused
+      return matchesSearch && matchesCategory && matchesStatus && matchesEmail && matchesPrice && isUnused
     }
 
-    return matchesSearch && matchesCategory && matchesStatus && matchesEmail
+    return matchesSearch && matchesCategory && matchesStatus && matchesEmail && matchesPrice
   })
 
   if (sortBy === "price-high") {
@@ -355,7 +375,7 @@ export default function SubscriptionsPage({
       </div>
 
       {/* Search and Filters */}
-      <div className="mb-6 flex gap-4">
+      <div className="mb-4 flex gap-4">
         <div className="relative flex-1">
           <label htmlFor="subscriptions-search" className="sr-only">Search subscriptions</label>
           <input
@@ -394,40 +414,6 @@ export default function SubscriptionsPage({
             </option>
           ))}
         </select>
-        <label htmlFor="filter-category" className="sr-only">Filter by category</label>
-        <select
-          id="filter-category"
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className={`px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
-            darkMode
-              ? "bg-[#2D3748] border-[#374151] text-white focus:ring-[#FFD166]"
-              : "bg-white border-gray-300 text-gray-900 focus:ring-black"
-          }`}
-        >
-          {categories.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat === "all" ? "All Categories" : cat}
-            </option>
-          ))}
-        </select>
-        <label htmlFor="filter-status" className="sr-only">Filter by status</label>
-        <select
-          id="filter-status"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className={`px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
-            darkMode
-              ? "bg-[#2D3748] border-[#374151] text-white focus:ring-[#FFD166]"
-              : "bg-white border-gray-300 text-gray-900 focus:ring-black"
-          }`}
-        >
-          {statuses.map((status) => (
-            <option key={status} value={status}>
-              {status === "all" ? "All Status" : status.charAt(0).toUpperCase() + status.slice(1)}
-            </option>
-          ))}
-        </select>
         <label htmlFor="sort-by" className="sr-only">Sort subscriptions</label>
         <select
           id="sort-by"
@@ -444,6 +430,16 @@ export default function SubscriptionsPage({
           <option value="price-low">Price: Low to High</option>
           <option value="renewal">Renewal Soon</option>
         </select>
+      </div>
+
+      {/* Advanced filter bar */}
+      <div className="mb-6">
+        <AdvancedFilterBar
+          filters={advancedFilters}
+          onChange={setAdvancedFilters}
+          availableCategories={categories}
+          darkMode={darkMode}
+        />
       </div>
 
       {/* Live region for search result count */}
@@ -522,14 +518,39 @@ export default function SubscriptionsPage({
           darkMode={darkMode}
           onClose={() => setSelectedSubForCancel(null)}
           onCancelled={() => {
-            // In a real app, you would refresh the subscription list here
-            // For now, we'll just show a success toast or manually update the local state if possible
-            // But since subscriptions props are passed down, the parent should handle it.
-            // For the sake of this demo, we'll just close it.
             setSelectedSubForCancel(null)
           }}
         />
       )}
+
+      {showKeyboardHelp && (
+        <KeyboardHelpModal
+          darkMode={darkMode}
+          onClose={() => setShowKeyboardHelp(false)}
+        />
+      )}
+
+      {/* Keyboard shortcut hint footer */}
+      <div className={`mt-8 flex items-center justify-center gap-1.5 text-xs ${darkMode ? "text-gray-600" : "text-gray-400"}`}>
+        <span>Press</span>
+        <kbd
+          className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded border font-mono text-[11px] ${
+            darkMode ? "bg-[#2D3748] border-[#374151] text-gray-400" : "bg-gray-100 border-gray-300 text-gray-500"
+          }`}
+        >
+          ?
+        </kbd>
+        <span>for keyboard shortcuts</span>
+        <span aria-hidden="true" className="mx-1">·</span>
+        <kbd
+          className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded border font-mono text-[11px] ${
+            darkMode ? "bg-[#2D3748] border-[#374151] text-gray-400" : "bg-gray-100 border-gray-300 text-gray-500"
+          }`}
+        >
+          ⌘K
+        </kbd>
+        <span>for command palette</span>
+      </div>
 
       {hasNoResults && (
         <EmptyState
@@ -541,8 +562,7 @@ export default function SubscriptionsPage({
             onClick: () => {
               setSearchTerm("")
               setFilterEmail("all")
-              setFilterCategory("all")
-              setFilterStatus("all")
+              setAdvancedFilters(EMPTY_FILTERS)
               setShowDuplicatesOnly(false)
               setShowUnusedOnly(false)
             },

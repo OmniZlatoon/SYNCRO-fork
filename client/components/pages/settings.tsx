@@ -14,9 +14,9 @@ import {
   Building2,
   Send,
 } from "lucide-react"
-import { useEffect, useState } from "react"
 import React, { useState, useEffect } from "react"
 import { apiGet, apiPatch } from "@/lib/api"
+import { PushNotificationToggle } from "@/components/ui/PushNotificationToggle"
 import { type Currency, CURRENCY_NAMES, CURRENCY_SYMBOLS } from "@/lib/currency-utils"
 
 interface SettingsPageProps {
@@ -145,7 +145,7 @@ export default function SettingsPage({
     }
   }
 
-  const toggleKeyVisibility = (id: number) => {
+  const toggleKeyVisibility = (id: string) => {
     setApiKeys(apiKeys.map((k) => (k.id === id ? { ...k, visible: !k.visible } : k)))
   }
 
@@ -660,6 +660,9 @@ export default function SettingsPage({
           Notification Preferences
         </h3>
         <div className="space-y-4">
+          <div className="mb-6">
+            <PushNotificationToggle darkMode={darkMode} />
+          </div>
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"

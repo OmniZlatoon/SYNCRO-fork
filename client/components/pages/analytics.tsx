@@ -25,9 +25,7 @@ interface AnalyticsPageProps {
   savedBySyncroCount?: number
 }
 
-export default function AnalyticsPage({ subscriptions, totalSpend, darkMode, mode = "individual", savedBySyncroCount = 0 }: AnalyticsPageProps) {
-  const [view, setView] = useState("default") // 'default', 'calendar', 'comparison'
-export default function AnalyticsPage({ summary, darkMode }: AnalyticsPageProps) {
+export default function AnalyticsPage({ summary, darkMode, savedBySyncroCount = 0 }: AnalyticsPageProps) {
   const [view, setView] = useState("default")
   const [currentMonth, setCurrentMonth] = useState(new Date())
 
@@ -100,9 +98,9 @@ export default function AnalyticsPage({ summary, darkMode }: AnalyticsPageProps)
               <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? "#374151" : "#e5e7eb"} />
               <XAxis dataKey="month" stroke={darkMode ? "#9ca3af" : "#9ca3af"} />
               <YAxis stroke={darkMode ? "#9ca3af" : "#9ca3af"} />
-              <Tooltip 
-                contentStyle={{ backgroundColor: darkMode ? "#1F2937" : "#FFF", border: 'none', borderRadius: '8px' }}
-                itemStyle={{ color: '#6366F1' }}
+              <Tooltip
+                contentStyle={{ backgroundColor: darkMode ? "#1F2937" : "#FFF", border: "none", borderRadius: "8px" }}
+                itemStyle={{ color: "#6366F1" }}
               />
               <Line type="monotone" dataKey="total_spend" stroke="#6366F1" strokeWidth={3} dot={{ fill: "#6366F1", r: 5 }} />
             </LineChart>
@@ -127,16 +125,16 @@ export default function AnalyticsPage({ summary, darkMode }: AnalyticsPageProps)
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value: number) => `$${value.toFixed(2)}`} />
+              <Tooltip formatter={(value) => `$${Number(value).toFixed(2)}`} />
             </PieChart>
           </ResponsiveContainer>
           <div className="mt-4 grid grid-cols-2 gap-2">
-             {summary.category_breakdown.map((cat, idx) => (
-               <div key={idx} className="flex items-center gap-2 text-sm">
-                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
-                 <span className="text-gray-400">{cat.category}: ${cat.total_spend.toFixed(0)}</span>
-               </div>
-             ))}
+            {summary.category_breakdown.map((cat, idx) => (
+              <div key={idx} className="flex items-center gap-2 text-sm">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
+                <span className="text-gray-400">{cat.category}: ${cat.total_spend.toFixed(0)}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -156,38 +154,6 @@ export default function AnalyticsPage({ summary, darkMode }: AnalyticsPageProps)
         </div>
       )}
 
-      {/* Calendar View */}
-      {view === "calendar" && (
-        <div
-          className={`border rounded-xl p-6 ${darkMode ? "bg-[#2D3748] border-[#374151]" : "bg-white border-gray-200"}`}
-        >
-          <div className="flex items-center justify-between mb-6">
-            <h3 className={`text-lg font-semibold ${darkMode ? "text-white" : "text-[#1E2A35]"}`}>Renewal Calendar</h3>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={previousMonth}
-                className={`p-2 rounded-lg ${darkMode ? "hover:bg-[#374151]" : "hover:bg-gray-100"}`}
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <span className={`font-medium ${darkMode ? "text-white" : "text-[#1E2A35]"}`}>{monthName}</span>
-              <button
-                onClick={nextMonth}
-                className={`p-2 rounded-lg ${darkMode ? "hover:bg-[#374151]" : "hover:bg-gray-100"}`}
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Calendar Grid */}
-          <div className="grid grid-cols-7 gap-2">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-              <div
-                key={day}
-                className={`text-center text-sm font-medium py-2 ${darkMode ? "text-gray-400" : "text-gray-600"}`}
-              >
-                {day}
       {/* Top Subscriptions */}
       <div className={`p-6 rounded-xl border ${darkMode ? "bg-[#2D3748] border-[#374151]" : "bg-white border-gray-200"}`}>
         <h3 className={`font-semibold mb-6 ${darkMode ? "text-white" : "text-gray-900"}`}>Top Subscriptions (Monthly)</h3>
@@ -202,7 +168,7 @@ export default function AnalyticsPage({ summary, darkMode }: AnalyticsPageProps)
                 <p className={`font-bold ${darkMode ? "text-white" : "text-gray-900"}`}>
                   ${sub.monthly_normalized_price.toFixed(2)}
                 </p>
-                <p className="text-xs text-green-500">Active</p>
+                <p className="text-xs text-green-600">Active</p>
               </div>
             </div>
           ))}

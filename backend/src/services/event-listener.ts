@@ -3,7 +3,7 @@ import { supabase } from '../config/database';
 import { reorgHandler } from './reorg-handler';
 import { generateCycleId } from '../utils/cycle-id';
 import { renewalCooldownService } from './renewal-cooldown-service';
-import { calculateBackoffDelay, NonRetryableError } from '../utils/retry';
+import { calculateBackoffDelay } from '../utils/retry';
 
 interface ContractEvent {
   type: string;
@@ -22,22 +22,21 @@ interface ProcessedEvent {
   event_data: any;
 }
 
+export type EventListenerStatus = 'running' | 'stopped' | 'disabled' | 'retrying' | 'failed';
+
 export interface EventListenerHealth {
-  status: 'healthy' | 'unhealthy' | 'stopped';
+  status: EventListenerStatus;
   isRunning: boolean;
   lastSuccessfulPoll: string | null;
   consecutiveErrors: number;
-  lastProcessedLedger: number;
+  lastProcessedLedger: number | null;
+  reason?: string;
+  retryCount?: number;
+  nextRetryAt?: string | null;
 }
 
 const ALERT_THRESHOLD = 10;
 const MAX_BACKOFF_MS = 300_000; // 5 minutes
-export type EventListenerStatus = 'running' | 'stopped' | 'disabled' | 'retrying' | 'failed';
-  status: EventListenerStatus;
-  reason?: string;
-  lastProcessedLedger: number | null;
-  retryCount?: number;
-  nextRetryAt?: string | null;
 const MAX_RETRY_ATTEMPTS = 10;
 const RETRY_INITIAL_DELAY_MS = 5000;
 const RETRY_MAX_DELAY_MS = 5 * 60 * 1000; // 5 minutes
@@ -47,6 +46,7 @@ export class EventListener {
   private rpcUrl: string;
   private lastProcessedLedger: number = 0;
   private isRunning: boolean = false;
+  private isProcessing: boolean = false;
 
   // Configurable via env var — defaults to 5 seconds
   private readonly pollInterval: number = parseInt(
@@ -54,12 +54,9 @@ export class EventListener {
     10
   );
 
-  // Resilience state
-  private isProcessing: boolean = false;
+  // Resilience & Health state
   private consecutiveErrors: number = 0;
   private lastSuccessfulPoll: Date | null = null;
-
-  // Health tracking
   private _status: EventListenerStatus = 'stopped';
   private _disabledReason?: string;
   private _retryCount: number = 0;
@@ -67,11 +64,9 @@ export class EventListener {
 
   constructor() {
     this.contractId = process.env.SOROBAN_CONTRACT_ADDRESS || '';
-    this.rpcUrl =
-      process.env.STELLAR_NETWORK_URL || 'https://soroban-testnet.stellar.org';
+    this.rpcUrl = process.env.STELLAR_NETWORK_URL || 'https://soroban-testnet.stellar.org';
 
     if (!this.contractId) {
-      // Don't throw — mark as disabled so the process can still start
       this._status = 'disabled';
       this._disabledReason = 'SOROBAN_CONTRACT_ADDRESS not configured';
       logger.warn('EventListener disabled: SOROBAN_CONTRACT_ADDRESS not configured');
@@ -81,8 +76,11 @@ export class EventListener {
   getHealth(): EventListenerHealth {
     return {
       status: this._status,
-      reason: this._disabledReason,
+      isRunning: this.isRunning,
+      lastSuccessfulPoll: this.lastSuccessfulPoll?.toISOString() ?? null,
+      consecutiveErrors: this.consecutiveErrors,
       lastProcessedLedger: this.lastProcessedLedger || null,
+      reason: this._disabledReason,
       retryCount: this._retryCount,
       nextRetryAt: this._nextRetryAt?.toISOString() ?? null,
     };
@@ -116,36 +114,10 @@ export class EventListener {
     logger.info('Event listener stopped');
   }
 
-  /**
-   * Returns a health snapshot for the admin health endpoint.
-   */
-  getHealth(): EventListenerHealth {
-    const status = !this.isRunning
-      ? 'stopped'
-      : this.consecutiveErrors >= ALERT_THRESHOLD
-      ? 'unhealthy'
-      : 'healthy';
-
-    return {
-      status,
-      isRunning: this.isRunning,
-      lastSuccessfulPoll: this.lastSuccessfulPoll?.toISOString() ?? null,
-      consecutiveErrors: this.consecutiveErrors,
-      lastProcessedLedger: this.lastProcessedLedger,
-    };
-  }
-
-  /**
-   * Main poll loop with:
-   *  - Exponential backoff on errors (max 5 minutes)
-   *  - Mutex to prevent overlapping fetchAndProcessEvents calls
-   *  - Alert log after ALERT_THRESHOLD consecutive failures
-   */
   private async poll() {
     let backoffMs = this.pollInterval;
 
     while (this.isRunning) {
-      // Mutex: skip tick if the previous call is still running
       if (this.isProcessing) {
         logger.warn('EventListener: previous poll still running, skipping tick');
         await this.sleep(backoffMs);
@@ -160,6 +132,13 @@ export class EventListener {
         this.lastSuccessfulPoll = new Date();
         this.consecutiveErrors = 0;
         backoffMs = this.pollInterval;
+        
+        if (this._retryCount > 0) {
+          logger.info('EventListener recovered after retries', { retryCount: this._retryCount });
+          this._retryCount = 0;
+          this._nextRetryAt = null;
+          this._status = 'running';
+        }
       } catch (error) {
         this.consecutiveErrors++;
         backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
@@ -170,37 +149,22 @@ export class EventListener {
           nextRetryMs: backoffMs,
         });
 
-        // Fire alert after threshold consecutive failures
         if (this.consecutiveErrors === ALERT_THRESHOLD) {
-          logger.error(
-            `ALERT: EventListener has failed ${ALERT_THRESHOLD} consecutive times`,
-            {
-              lastSuccessfulPoll: this.lastSuccessfulPoll?.toISOString() ?? 'never',
-            }
-          );
-          // Plug in PagerDuty / Slack / email notification here if needed
+          logger.error(`ALERT: EventListener has failed ${ALERT_THRESHOLD} consecutive times`, {
+            lastSuccessfulPoll: this.lastSuccessfulPoll?.toISOString() ?? 'never',
+          });
         }
-      } finally {
-        // Always release the mutex, even if fetchAndProcessEvents throws
-        this.isProcessing = false;
-        // Reset retry count on success
-        if (this._retryCount > 0) {
-          logger.info('EventListener recovered after retries', { retryCount: this._retryCount });
-          this._retryCount = 0;
-          this._nextRetryAt = null;
-        this._status = 'running';
-        logger.error('Event polling error:', error);
+
         await this.handlePollError(error);
         if (!this.isRunning) break;
+      } finally {
+        this.isProcessing = false;
       }
 
       await this.sleep(backoffMs);
     }
   }
 
-private async fetchAndProcessEvents() {
-  logger.info('Polling for events...');
-  const currentLedger = await this.getCurrentLedger();
   private async handlePollError(error: unknown) {
     this._retryCount++;
 
@@ -236,27 +200,25 @@ private async fetchAndProcessEvents() {
   private async fetchAndProcessEvents() {
     const currentLedger = await this.getCurrentLedger();
 
-  // Check for reorg
-  if (currentLedger < this.lastProcessedLedger) {
-    await reorgHandler.handleReorg(currentLedger, this.lastProcessedLedger);
-    this.lastProcessedLedger = await this.getLastProcessedLedger();
-  }
+    // Check for reorg
+    if (currentLedger < this.lastProcessedLedger) {
+      await reorgHandler.handleReorg(currentLedger, this.lastProcessedLedger);
+      this.lastProcessedLedger = await this.getLastProcessedLedger();
+    }
 
-  const events = await this.fetchEvents(this.lastProcessedLedger + 1);
+    const events = await this.fetchEvents(this.lastProcessedLedger + 1);
 
-  if (events.length === 0) return;
+    if (events.length === 0) return;
 
-  const processed = await this.processEvents(events);
+    const processed = await this.processEvents(events);
 
-  if (processed.length > 0) {
-    await this.saveEvents(processed);
+    if (processed.length > 0) {
+      await this.saveEvents(processed);
+    }
+    
     this.lastProcessedLedger = Math.max(...events.map(e => e.ledger));
     await this.updateLastProcessedLedger(this.lastProcessedLedger);
   }
-}
-
-
-
 
   private async fetchEvents(fromLedger: number): Promise<ContractEvent[]> {
     const response = await fetch(this.rpcUrl, {
@@ -334,15 +296,9 @@ private async fetchAndProcessEvents() {
 
     if (sub?.id) {
       try {
-        await renewalCooldownService.recordRenewalAttempt(
-          sub.id,
-          true,
-          undefined,
-          'automatic'
-        );
+        await renewalCooldownService.recordRenewalAttempt(sub.id, true, undefined, 'automatic');
       } catch (recordError) {
         logger.warn('Failed to record renewal attempt success:', recordError);
-        // Don't throw — the main operation succeeded
       }
     }
 
@@ -385,7 +341,6 @@ private async fetchAndProcessEvents() {
         );
       } catch (recordError) {
         logger.warn('Failed to record renewal attempt failure:', recordError);
-        // Don't throw — the main operation succeeded
       }
     }
 
@@ -464,14 +419,6 @@ private async fetchAndProcessEvents() {
     };
   }
 
-  private async handleDuplicateRenewalRejected(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id, cycle_id } = event.value;
-
-    logger.warn('Duplicate renewal rejected by contract', { sub_id, cycle_id });
-
-    return {
-      sub_id,
-      event_type: 'duplicate_renewal_rejected',
   private async handleExecutorAssigned(event: ContractEvent): Promise<ProcessedEvent | null> {
     const { sub_id, executor } = event.value;
 
@@ -479,6 +426,9 @@ private async fetchAndProcessEvents() {
       .from('subscriptions')
       .update({ executor_address: executor })
       .eq('blockchain_sub_id', sub_id);
+
+    return {
+      sub_id,
       event_type: 'executor_assigned',
       ledger: event.ledger,
       tx_hash: event.txHash,
@@ -486,14 +436,6 @@ private async fetchAndProcessEvents() {
     };
   }
 
-  private async handleRenewalLockAcquired(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id, locked_at, lock_timeout } = event.value;
-
-    logger.info('Renewal lock acquired on-chain', { sub_id, locked_at, lock_timeout });
-
-    return {
-      sub_id,
-      event_type: 'renewal_lock_acquired',
   private async handleExecutorRemoved(event: ContractEvent): Promise<ProcessedEvent | null> {
     const { sub_id } = event.value;
 
@@ -501,6 +443,9 @@ private async fetchAndProcessEvents() {
       .from('subscriptions')
       .update({ executor_address: null })
       .eq('blockchain_sub_id', sub_id);
+
+    return {
+      sub_id,
       event_type: 'executor_removed',
       ledger: event.ledger,
       tx_hash: event.txHash,
@@ -508,31 +453,12 @@ private async fetchAndProcessEvents() {
     };
   }
 
-  private async handleRenewalLockReleased(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id, released_at } = event.value;
-
-    logger.info('Renewal lock released on-chain', { sub_id, released_at });
-
-    return {
-      sub_id,
-      event_type: 'renewal_lock_released',
-      ledger: event.ledger,
-      tx_hash: event.txHash,
-      event_data: event.value,
-    };
-  }
-
-  private async handleRenewalLockExpired(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id, original_locked_at, expired_at } = event.value;
-
-    logger.warn('Renewal lock expired on-chain', { sub_id, original_locked_at, expired_at });
-
-    return {
-      sub_id,
-      event_type: 'renewal_lock_expired',
   private async handleDuplicateRenewalRejected(event: ContractEvent): Promise<ProcessedEvent | null> {
     const { sub_id, cycle_id } = event.value;
     logger.warn('Duplicate renewal rejected', { sub_id, cycle_id, ledger: event.ledger });
+
+    return {
+      sub_id,
       event_type: 'duplicate_renewal_rejected',
       ledger: event.ledger,
       tx_hash: event.txHash,
@@ -543,21 +469,17 @@ private async fetchAndProcessEvents() {
   private async handleLifecycleTimestampUpdated(event: ContractEvent): Promise<ProcessedEvent | null> {
     const { sub_id, event_kind, timestamp } = event.value;
 
-    const column = LIFECYCLE_COLUMN_MAP[event_kind];
+    const column = LIFECYCLE_COLUMN_MAP[event_kind as number];
     if (!column) {
       logger.warn('Unknown lifecycle event_kind', { sub_id, event_kind });
       return null;
     }
 
-    await supabase
-    const column = LIFECYCLE_COLUMN_MAP[event_kind as number];
-      logger.warn('Unknown lifecycle event_kind', { event_kind });
     const { error } = await supabase
       .from('subscriptions')
       .update({ [column]: timestamp })
       .eq('blockchain_sub_id', sub_id);
 
-    logger.info('Lifecycle timestamp updated', { sub_id, column, timestamp });
     if (error) {
       logger.error('Failed to update lifecycle timestamp', { error, sub_id, column });
     }
@@ -570,7 +492,6 @@ private async fetchAndProcessEvents() {
       event_data: event.value,
     };
   }
-  // Duplicate handlers removed below in favor of consolidated implementations later in the file
 
   private async saveEvents(events: ProcessedEvent[]) {
     const { error } = await supabase

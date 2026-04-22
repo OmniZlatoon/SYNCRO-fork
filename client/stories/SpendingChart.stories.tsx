@@ -23,7 +23,7 @@ function SpendingChart() {
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="month" />
           <YAxis />
-          <Tooltip formatter={(value: number) => `$${value}`} />
+          <Tooltip formatter={(value) => `$${Number(value).toFixed(2)}`} />
           <Line type="monotone" dataKey="spend" stroke="#6366f1" strokeWidth={3} dot={{ r: 4 }} />
         </LineChart>
       </ResponsiveContainer>

@@ -297,44 +297,6 @@ export default function ManageSubscriptionModal({
                   Cancel on Provider Site
                 </button>
               )}
-            {/* Legacy plain tags */}
-            {subscription.tags && subscription.tags.length > 0 && (
-              <div className="mt-4 flex items-center gap-2 flex-wrap">
-                <Tag className="w-4 h-4 text-gray-400" />
-                {subscription.tags?.map((tag: string, idx: number) => (
-                  <span
-                    key={idx}
-                    className={`px-2 py-1 text-xs rounded-full ${darkMode ? "bg-[#2D3748] text-gray-300" : "bg-white text-gray-700"}`}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Custom coloured tags */}
-            <div className="mt-4">
-              <p className={`text-xs font-medium mb-1.5 ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-                Custom tags
-              </p>
-              <TagInput
-                allTags={tags}
-                selectedTagIds={assignedTagIds}
-                onAdd={handleAddTag}
-                onRemove={handleRemoveTag}
-                onCreateTag={createTag}
-                darkMode={darkMode}
-              />
-            </div>
-
-            {/* Notes */}
-            <NotesEditor
-              subscriptionId={String(subscription.id)}
-              initialNotes={subscription.notes ?? ""}
-              onSave={saveNotes}
-              darkMode={darkMode}
-            />
-          </div>
 
               {subscription.renewalUrl &&
                 subscription.status !== "cancelled" && (

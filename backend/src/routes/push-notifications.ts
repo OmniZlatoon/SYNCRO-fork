@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { supabase } from '../config/database';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import logger from '../config/logger';
@@ -203,6 +203,37 @@ router.get('/status', async (req: AuthenticatedRequest, res: Response) => {
     return res.json({ success: true, data: { subscribed: (count ?? 0) > 0, count: count ?? 0 } });
   } catch (err) {
     logger.error('Push status error:', err);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+/**
+ * @openapi
+ * /api/notifications/push/vapid-public-key:
+ *   get:
+ *     tags: [Push Notifications]
+ *     summary: Get the VAPID public key for push subscriptions
+ *     responses:
+ *       200:
+ *         description: VAPID public key
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     publicKey: { type: string }
+ */
+router.get('/vapid-public-key', (req: Request, res: Response) => {
+  try {
+    const { pushService } = require('../services/push-service');
+    const publicKey = pushService.getVapidPublicKey();
+    return res.json({ success: true, data: { publicKey } });
+  } catch (err) {
+    logger.error('VAPID public key error:', err);
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });

@@ -18,8 +18,13 @@ export const metadata: Metadata = {
   description: "Self-custodial subscription management on Stellar",
   generator: "v0.app",
   manifest: "/manifest.json",
+};
+
+export const viewport = {
   themeColor: "#6366f1",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default async function RootLayout({
@@ -27,12 +32,15 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const headersList = await headers();
+  const nonce = headersList.get("x-nonce") || "";
+
     return (
         <html lang="en">
             <body className={`font-sans antialiased`} suppressHydrationWarning>
-                <PWAProvider>
-                    {children}
-                </PWAProvider>
+                <NonceProvider nonce={nonce}>
+                    <PWAProvider>{children}</PWAProvider>
+                </NonceProvider>
                 <footer className="py-4 text-center text-xs text-gray-500">
                     <Link href="/privacy" className="hover:underline">Privacy Policy</Link>
                     <span className="mx-2">·</span>
@@ -42,15 +50,4 @@ export default async function RootLayout({
             </body>
         </html>
     );
-  const headersList = await headers();
-  const nonce = headersList.get("x-nonce") || "";
-  return (
-    <html lang="en">
-      <body className={`font-sans antialiased`} suppressHydrationWarning>
-        <NonceProvider nonce={nonce}>
-          <PWAProvider>{children}</PWAProvider>
-        </NonceProvider>
-      </body>
-    </html>
-  );
 }

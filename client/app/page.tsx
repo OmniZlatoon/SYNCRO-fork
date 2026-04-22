@@ -49,6 +49,7 @@ async function getInitialData() {
             return {
                 subscriptions: [],
                 emailAccounts: [],
+                payments: [],
                 priceChanges: [],
                 consolidationSuggestions: [],
             };
@@ -70,12 +71,9 @@ async function getInitialData() {
         ]);
 
         const subscriptions =
-            subscriptionsResult.data?.map(transformSubscription) ||
-            initialSubscriptions;
-        const emailAccounts = emailAccountsResult.data || initialEmailAccounts;
-        const payments = paymentsResult.data || [];
             subscriptionsResult.data?.map(transformSubscription) || [];
         const emailAccounts = emailAccountsResult.data || [];
+        const payments = paymentsResult.data || [];
 
         return {
             subscriptions,
@@ -88,11 +86,9 @@ async function getInitialData() {
         console.error("Error fetching initial data:", error);
         // Fallback to empty data on error
         return {
-            subscriptions: initialSubscriptions,
-            emailAccounts: initialEmailAccounts,
-            payments: [],
             subscriptions: [],
             emailAccounts: [],
+            payments: [],
             priceChanges: [],
             consolidationSuggestions: [],
         };

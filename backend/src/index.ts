@@ -7,6 +7,9 @@ import swaggerUi from 'swagger-ui-express';
 // Load environment variables before importing other modules
 dotenv.config();
 
+// Validate all env vars at startup — crashes with a clear message if any required var is missing
+import './config/env';
+
 import logger from './config/logger';
 import { requestIdMiddleware } from './middleware/requestContext';
 import { requestLoggerMiddleware } from './middleware/requestLogger';

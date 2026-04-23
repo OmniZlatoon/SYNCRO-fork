@@ -119,3 +119,44 @@ export interface MergeSubscriptionsRequest {
 export interface MergeSubscriptionsResponse {
   merged: Subscription;
 }
+
+// MFA / Two Factor Authentication Types
+export interface MFAFactor {
+  id: string;
+  type: 'totp' | 'webauthn';
+  friendlyName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MFAEnrollResponse {
+  id: string;
+  type: 'totp';
+  secret: string;
+  qrCode: string;
+  uri: string;
+}
+
+export interface MFAChallengeResponse {
+  challengeId: string;
+  expiresAt: string;
+}
+
+export interface MFAVerifyResponse {
+  success: boolean;
+  message?: string;
+}
+
+export interface MFARecoveryCode {
+  code: string;
+  used: boolean;
+  usedAt?: string;
+}
+
+export interface MFAStatus {
+  enabled: boolean;
+  factors: MFAFactor[];
+  currentLevel: 'aal1' | 'aal2';
+  nextLevel: 'aal1' | 'aal2';
+  recoveryCodesRemaining: number;
+}

@@ -5,6 +5,7 @@ import { analyticsService } from "./analytics-service";
 import { webhookService } from "./webhook-service";
 import logger from "../config/logger";
 import { DatabaseTransaction } from "../utils/transaction";
+import SERVICE_CATEGORIES from "../../services/service-categories";
 import type {
   Subscription,
   SubscriptionCreateInput,
@@ -47,7 +48,7 @@ export class SubscriptionService {
             billing_cycle: input.billing_cycle,
             status: input.status || "active",
             next_billing_date: input.next_billing_date || null,
-            category: input.category || null,
+            category: input.category || this.autoTag(input.name),
             logo_url: input.logo_url || null,
             website_url: input.website_url || null,
             renewal_url: input.renewal_url || null,
@@ -773,6 +774,32 @@ export class SubscriptionService {
     }
 
     return data || [];
+  }
+
+  /**
+   * Auto-tag a subscription with a category based on its name.
+   * Uses keyword mapping from SERVICE_CATEGORIES lookup table.
+   * Falls back to 'other' if no match is found.
+   */
+  autoTag(name: string): string {
+    const normalized = name
+      .toLowerCase()
+      .replace(/\s+(plus|pro|premium|basic|standard|enterprise|team|business)$/i, '')
+      .trim();
+
+    // Exact match first
+    if (SERVICE_CATEGORIES[normalized]) {
+      return SERVICE_CATEGORIES[normalized];
+    }
+
+    // Partial match — check if any key is contained in the name or vice versa
+    for (const [key, category] of Object.entries(SERVICE_CATEGORIES)) {
+      if (normalized.includes(key) || key.includes(normalized)) {
+        return category;
+      }
+    }
+
+    return 'other';
   }
 }
 

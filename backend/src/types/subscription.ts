@@ -28,11 +28,7 @@ export interface Subscription {
   paused_at: string | null;
   resume_at: string | null;
   pause_reason: string | null;
-  // Trial tracking fields
-  is_trial: boolean;
-  trial_ends_at: string | null;
-  trial_converts_to_price: number | null;
-  credit_card_required: boolean;
+  last_interaction_at: string | null;
 }
 
 export interface SubscriptionCreateInput {

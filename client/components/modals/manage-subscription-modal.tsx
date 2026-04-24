@@ -18,6 +18,7 @@ import NotificationPreferencesModal from "@/components/modals/notification-prefe
 import { NotesEditor } from "@/components/ui/notes-editor"
 import { TagInput } from "@/components/ui/tag-input"
 import { useTags } from "@/hooks/use-tags"
+import { apiPost } from "@/lib/api"
 
 const CANCEL_LINKS: Record<string, string> = {
   "ChatGPT Plus": "https://platform.openai.com/account/billing/overview",
@@ -301,9 +302,10 @@ export default function ManageSubscriptionModal({
               {subscription.renewalUrl &&
                 subscription.status !== "cancelled" && (
                   <button
-                    onClick={() =>
+                    onClick={() => {
                       window.open(subscription.renewalUrl, "_blank")
-                    }
+                      apiPost(`/api/subscriptions/${subscription.id}/track-interaction`).catch(() => {})
+                    }}
                     className={`w-full flex items-center justify-center gap-2 px-4 py-3 border-2 ${
                       darkMode
                         ? "border-[#374151] hover:border-[#FFD166] text-[#F9F6F2]"

@@ -48,6 +48,7 @@ import {
     checkDuplicate,
 } from "@/lib/subscription-utils";
 import { checkBudgetAlerts } from "@/lib/budget-utils";
+import { apiPost } from "@/lib/api";
 
 import { analyticsApi, AnalyticsSummary } from "@/lib/api/analytics";
 
@@ -361,6 +362,7 @@ export function AppClient({
     const handleRenewSubscription = (subscription: any) => {
         if (subscription.renewalUrl) {
             window.open(subscription.renewalUrl, "_blank");
+            apiPost(`/api/subscriptions/${subscription.id}/track-interaction`).catch(() => {});
         }
     };
 

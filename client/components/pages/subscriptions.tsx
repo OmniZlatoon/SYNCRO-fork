@@ -265,7 +265,7 @@ export default function SubscriptionsPage({
             }`}
           >
             <Clock className="w-4 h-4" />
-            Unused ({unusedSubscriptions.length})
+            Potentially Wasted ({unusedSubscriptions.length})
           </button>
         )}
         <button
@@ -783,10 +783,10 @@ export function SubscriptionCard({
                 Duplicate
               </span>
             )}
-            {unusedInfo && sub.category === "AI Tools" && sub.hasApiKey && (
+            {unusedInfo && (
               <span className="bg-[#E86A33] text-white text-xs px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
                 <Clock aria-hidden="true" className="w-3 h-3" />
-                Unused {unusedInfo.daysSinceLastUse}d
+                Potentially Wasted
               </span>
             )}
             {sub.latest_price_change && (

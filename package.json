@@ -1,0 +1,15 @@
+{
+  "name": "syncro-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SYNCRO monorepo root — manages git hooks for backend and client workspaces",
+  "scripts": {
+    "prepare": "husky",
+    "lint:backend": "eslint --max-warnings=0",
+    "lint:client": "eslint --max-warnings=0"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2"
+  }
+}

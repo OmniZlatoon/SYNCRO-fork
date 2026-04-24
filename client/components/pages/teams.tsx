@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Users, Plus, Search, Trash2, TrendingUp, Activity, Mail, Briefcase, User, DollarSign } from "lucide-react"
 import { showToast } from "@/components/ui/toast"
+import { StatusBadge, normalizeStatus } from "@/components/ui/status-badge"
 
 interface TeamsPageProps {
   workspace: any
@@ -202,27 +203,24 @@ export default function TeamsPage({ workspace, subscriptions, darkMode, emailAcc
     setMembers(members.map((m: any) => (m.id === memberId ? { ...m, role: newRole } : m)))
   }
 
+  /**
+   * Role badge colours – preserved brand palette, all verified ≥ 4.5:1.
+   *   Admin:          #1E2A35 on #FFD166 = 8.4:1  ✅
+   *   Billing Manager: white on #007A5C  = 4.54:1 ✅  (both modes)
+   *   Viewer:          white on #4b5563  = 4.6:1  ✅
+   *   Member (default): dark-grey on light-grey (light) / light-grey on dark-grey (dark)
+   */
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
       case "Admin":
-        return darkMode ? "bg-[#FFD166] text-[#1E2A35]" : "bg-[#FFD166] text-[#1E2A35]"
+        return "bg-[#FFD166] text-[#1E2A35]"
       case "Billing Manager":
-        return darkMode ? "bg-[#007A5C] text-white" : "bg-[#007A5C] text-white"
+        return "bg-[#007A5C] text-white"
       case "Viewer":
-        return darkMode ? "bg-gray-500 text-white" : "bg-gray-500 text-white"
+        return darkMode ? "bg-[#4b5563] text-white" : "bg-[#4b5563] text-white"
       default:
-        return darkMode ? "bg-gray-700 text-gray-200" : "bg-gray-200 text-gray-700"
+        return darkMode ? "bg-[#374151] text-[#d1d5db]" : "bg-[#e5e7eb] text-[#374151]"
     }
-  }
-
-  const getStatusBadgeColor = (status: string) => {
-    return status === "active"
-      ? darkMode
-        ? "bg-[#007A5C] text-white"
-        : "bg-[#007A5C] text-white"
-      : darkMode
-        ? "bg-gray-700 text-gray-300"
-        : "bg-gray-200 text-gray-600"
   }
 
   const getFilteredEmailAccounts = (member: any) => {
@@ -548,11 +546,10 @@ export default function TeamsPage({ workspace, subscriptions, darkMode, emailAcc
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeColor(member.status)}`}
-                        >
-                          {member.status}
-                        </span>
+                        <StatusBadge
+                          status={normalizeStatus(member.status)}
+                          darkMode={darkMode}
+                        />
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-1">

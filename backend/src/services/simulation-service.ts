@@ -7,6 +7,7 @@ import type {
   SimulationSummary,
   RiskAssessment,
 } from '../types/simulation';
+import { addMonths, addQuarters, addYears } from 'date-fns';
 
 /**
  * Simulation service for projecting subscription renewals
@@ -14,27 +15,22 @@ import type {
 export class SimulationService {
   /**
    * Calculate the next renewal date based on billing cycle
-   * Uses fixed day intervals: monthly=30, quarterly=90, yearly=365
+   * Uses calendar-aware math from date-fns
    */
   calculateNextRenewal(
     currentDate: Date,
     billingCycle: 'monthly' | 'quarterly' | 'yearly'
   ): Date {
-    const nextDate = new Date(currentDate);
-    
     switch (billingCycle) {
       case 'monthly':
-        nextDate.setDate(nextDate.getDate() + 30);
-        break;
+        return addMonths(currentDate, 1);
       case 'quarterly':
-        nextDate.setDate(nextDate.getDate() + 90);
-        break;
+        return addQuarters(currentDate, 1);
       case 'yearly':
-        nextDate.setDate(nextDate.getDate() + 365);
-        break;
+        return addYears(currentDate, 1);
+      default:
+        return currentDate;
     }
-    
-    return nextDate;
   }
 
   /**

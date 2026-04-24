@@ -119,6 +119,12 @@ RATE_LIMIT_MFA_MAX=10
 RATE_LIMIT_MFA_WINDOW_MINUTES=15
 RATE_LIMIT_ADMIN_MAX=100
 RATE_LIMIT_ADMIN_WINDOW_HOURS=1
+
+# Soroban / Stellar (Blockchain)
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
+SOROBAN_CONTRACT_ADDRESS=YOUR_DEPLOYED_CONTRACT_ADDRESS
+STELLAR_SECRET_KEY=SB.........................YOUR_TESTNET_SECRET
+STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
 ```
 
 ## Development
@@ -233,6 +239,13 @@ npm test
 # Run tests with coverage
 npm run test:coverage
 ```
+
+### Blockchain Fallback Behavior
+
+- When `SOROBAN_CONTRACT_ADDRESS` or `STELLAR_SECRET_KEY` is not configured, blockchain writes are skipped and events are stored only in the `blockchain_logs` table with `status="pending"` (later updated to `confirmed` only if an on-chain write occurs).
+- If Soroban RPC is unavailable or repeated submission attempts fail, the service retries with exponential backoff (3 attempts by default). After exhausting retries:
+  - If `REDIS_URL` is set, the failed payload is pushed to a Redis DLQ list `dlq:blockchain_tx` for later reprocessing.
+  - If Redis is not available, a dead letter entry is recorded in `blockchain_logs` with `event_type="blockchain_dead_letter"` and `status="dead_letter"`.
 
 ## Deployment
 

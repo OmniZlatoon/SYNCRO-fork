@@ -16,6 +16,8 @@ export interface CancellationGuide {
   phoneNumber?: string;
 }
 
+export type SubscriptionStatus = 'active' | 'cancelled' | 'paused' | 'trial' | 'expired';
+
 export interface Subscription {
   id: string;
   name: string;
@@ -26,11 +28,15 @@ export interface Subscription {
   renewalDate?: string;
   category?: string;
   visibility?: 'private' | 'team';
+  status?: SubscriptionStatus;
+  paused_at?: string | null;
+  resume_at?: string | null;
+  pause_reason?: string | null;
   /** History of payments/changes kept for merge operations */
   history?: SubscriptionHistoryEntry[];
   createdAt: string;
   updatedAt: string;
-  cancellationGuide?: CancellationGuide; // NEW
+  cancellationGuide?: CancellationGuide;
 }
 
 export interface SubscriptionHistoryEntry {
@@ -118,4 +124,45 @@ export interface MergeSubscriptionsRequest {
 /** POST /api/subscriptions/merge  — response */
 export interface MergeSubscriptionsResponse {
   merged: Subscription;
+}
+
+// MFA / Two Factor Authentication Types
+export interface MFAFactor {
+  id: string;
+  type: 'totp' | 'webauthn';
+  friendlyName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MFAEnrollResponse {
+  id: string;
+  type: 'totp';
+  secret: string;
+  qrCode: string;
+  uri: string;
+}
+
+export interface MFAChallengeResponse {
+  challengeId: string;
+  expiresAt: string;
+}
+
+export interface MFAVerifyResponse {
+  success: boolean;
+  message?: string;
+}
+
+export interface MFARecoveryCode {
+  code: string;
+  used: boolean;
+  usedAt?: string;
+}
+
+export interface MFAStatus {
+  enabled: boolean;
+  factors: MFAFactor[];
+  currentLevel: 'aal1' | 'aal2';
+  nextLevel: 'aal1' | 'aal2';
+  recoveryCodesRemaining: number;
 }

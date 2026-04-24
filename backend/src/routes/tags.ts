@@ -10,31 +10,14 @@
  */
 
 import express, { Response } from 'express';
-import { z } from 'zod';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { validate } from '../middleware/validate';
 import { supabase } from '../config/database';
 import logger from '../config/logger';
+import { createTagSchema, notesSchema, addTagSchema } from '../schemas/tag';
 
-const router = express.Router();
+const router: express.Router = express.Router();
 router.use(authenticate);
-
-// ─── Validation ─────────────────────────────────────────────────────────────
-
-const createTagSchema = z.object({
-  name: z.string().min(1).max(50),
-  color: z
-    .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, 'Must be a valid hex colour')
-    .default('#6366f1'),
-});
-
-const notesSchema = z.object({
-  notes: z.string().max(5000),
-});
-
-const addTagSchema = z.object({
-  tag_id: z.string().uuid(),
-});
 
 // ─── Tag CRUD ────────────────────────────────────────────────────────────────
 
@@ -66,17 +49,12 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
  * POST /api/tags
  * Create a new custom tag.
  */
-router.post('/', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', validate(createTagSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const parsed = createTagSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ success: false, error: parsed.error.errors[0].message });
-    }
-
-    const { name, color } = parsed.data;
+    const { name, color } = req.body;
 
     const { data, error } = await supabase
       .from('subscription_tags')
@@ -130,54 +108,53 @@ router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
  * POST /api/subscriptions/:id/tags
  * Assign a tag to a subscription.
  */
-router.post('/subscriptions/:id/tags', async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+router.post(
+  '/subscriptions/:id/tags',
+  validate(addTagSchema),
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const parsed = addTagSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ success: false, error: parsed.error.errors[0].message });
+      const { id: subscriptionId } = req.params;
+      const { tag_id } = req.body;
+
+      // Verify ownership of the subscription
+      const { data: sub } = await supabase
+        .from('subscriptions')
+        .select('user_id')
+        .eq('id', subscriptionId)
+        .single();
+
+      if (!sub || sub.user_id !== userId) {
+        return res.status(404).json({ success: false, error: 'Subscription not found' });
+      }
+
+      // Verify tag belongs to user
+      const { data: tag } = await supabase
+        .from('subscription_tags')
+        .select('id')
+        .eq('id', tag_id)
+        .eq('user_id', userId)
+        .single();
+
+      if (!tag) {
+        return res.status(404).json({ success: false, error: 'Tag not found' });
+      }
+
+      const { error } = await supabase
+        .from('subscription_tag_assignments')
+        .upsert({ subscription_id: subscriptionId, tag_id });
+
+      if (error) throw error;
+
+      return res.status(200).json({ success: true, data: { assigned: true } });
+    } catch (error) {
+      logger.error('Error assigning tag:', error);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
     }
-
-    const { id: subscriptionId } = req.params;
-    const { tag_id } = parsed.data;
-
-    // Verify ownership of the subscription
-    const { data: sub } = await supabase
-      .from('subscriptions')
-      .select('user_id')
-      .eq('id', subscriptionId)
-      .single();
-
-    if (!sub || sub.user_id !== userId) {
-      return res.status(404).json({ success: false, error: 'Subscription not found' });
-    }
-
-    // Verify tag belongs to user
-    const { data: tag } = await supabase
-      .from('subscription_tags')
-      .select('id')
-      .eq('id', tag_id)
-      .eq('user_id', userId)
-      .single();
-
-    if (!tag) {
-      return res.status(404).json({ success: false, error: 'Tag not found' });
-    }
-
-    const { error } = await supabase
-      .from('subscription_tag_assignments')
-      .upsert({ subscription_id: subscriptionId, tag_id });
-
-    if (error) throw error;
-
-    return res.status(200).json({ success: true, data: { assigned: true } });
-  } catch (error) {
-    logger.error('Error assigning tag:', error);
-    return res.status(500).json({ success: false, error: 'Internal server error' });
-  }
-});
+  },
+);
 
 /**
  * DELETE /api/subscriptions/:id/tags/:tagId
@@ -222,32 +199,31 @@ router.delete('/subscriptions/:id/tags/:tagId', async (req: AuthenticatedRequest
  * PATCH /api/subscriptions/:id/notes
  * Update the free-text notes on a subscription.
  */
-router.patch('/subscriptions/:id/notes', async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+router.patch(
+  '/subscriptions/:id/notes',
+  validate(notesSchema),
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const parsed = notesSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ success: false, error: parsed.error.errors[0].message });
+      const { id: subscriptionId } = req.params;
+      const { notes } = req.body;
+
+      const { error } = await supabase
+        .from('subscriptions')
+        .update({ notes })
+        .eq('id', subscriptionId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      return res.status(200).json({ success: true, data: { updated: true } });
+    } catch (error) {
+      logger.error('Error updating notes:', error);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
     }
-
-    const { id: subscriptionId } = req.params;
-    const { notes } = parsed.data;
-
-    const { error } = await supabase
-      .from('subscriptions')
-      .update({ notes })
-      .eq('id', subscriptionId)
-      .eq('user_id', userId);
-
-    if (error) throw error;
-
-    return res.status(200).json({ success: true, data: { updated: true } });
-  } catch (error) {
-    logger.error('Error updating notes:', error);
-    return res.status(500).json({ success: false, error: 'Internal server error' });
-  }
-});
+  },
+);
 
 export default router;

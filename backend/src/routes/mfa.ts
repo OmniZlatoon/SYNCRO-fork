@@ -1,88 +1,83 @@
 import { Router, Response } from 'express';
+import { z } from 'zod';
 import { supabase } from '../config/database';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { validate } from '../middleware/validate';
 import { recoveryCodeService } from '../services/mfa-service';
 import { TotpRateLimiter } from '../lib/totp-rate-limiter';
 import { createMfaLimiter } from '../middleware/rate-limit-factory';
 import { emailService } from '../services/email-service';
 import logger from '../config/logger';
+import { verifyRecoveryCodeSchema, mfaNotifySchema, requireTwoFaSchema } from '../schemas/mfa';
 
-const router = Router();
+const router: Router = Router();
 const totpRateLimiter = new TotpRateLimiter();
-
-// Apply authenticate middleware to all routes
 router.use(authenticate);
 
 // ---------------------------------------------------------------------------
 // POST /api/2fa/recovery-codes/generate
 // Generate 10 recovery codes for the authenticated user
 // ---------------------------------------------------------------------------
+
 router.post('/2fa/recovery-codes/generate', createMfaLimiter(), async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const codes = await recoveryCodeService.generate(userId);
-    res.status(201).json({ success: true, data: { codes } });
-  } catch (error) {
-    logger.error('POST /api/2fa/recovery-codes/generate error:', error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to generate recovery codes',
-    });
-  }
+  const codes = await recoveryCodeService.generate(req.user!.id);
+  res.status(201).json({ success: true, data: { codes } });
 });
 
 // ---------------------------------------------------------------------------
 // POST /api/2fa/recovery-codes/verify
 // Verify a recovery code — rate-limited per session
 // ---------------------------------------------------------------------------
-router.post('/2fa/recovery-codes/verify', createMfaLimiter(), async (req: AuthenticatedRequest, res: Response) => {
-  const sessionId = req.user!.id;
 
-  if (totpRateLimiter.isLocked(sessionId)) {
-    return res.status(429).json({
-      success: false,
-      error: 'Too many failed attempts. Please try again later.',
-    });
-  }
+router.post(
+  '/2fa/recovery-codes/verify',
+  createMfaLimiter(),
+  validate(verifyRecoveryCodeSchema),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const sessionId = req.user!.id;
 
-  try {
-    const { code } = req.body as { code?: string };
-
-    if (!code) {
-      return res.status(400).json({ success: false, error: 'code is required' });
+    if (totpRateLimiter.isLocked(sessionId)) {
+      return res.status(429).json({
+        success: false,
+        error: 'Too many failed attempts. Please try again later.',
+      });
     }
 
-    const valid = await recoveryCodeService.verify(req.user!.id, code);
+    try {
+      const { code } = req.body;
 
-    if (!valid) {
-      totpRateLimiter.recordFailure(sessionId);
+      const valid = await recoveryCodeService.verify(req.user!.id, code);
 
-      // Re-check after recording — may have just hit the threshold
-      if (totpRateLimiter.isLocked(sessionId)) {
-        return res.status(429).json({
-          success: false,
-          error: 'Too many failed attempts. Please try again later.',
-        });
+      if (!valid) {
+        totpRateLimiter.recordFailure(sessionId);
+
+        if (totpRateLimiter.isLocked(sessionId)) {
+          return res.status(429).json({
+            success: false,
+            error: 'Too many failed attempts. Please try again later.',
+          });
+        }
+
+        return res.status(401).json({ success: false, error: 'Invalid or already-used recovery code' });
       }
 
-      return res.status(401).json({ success: false, error: 'Invalid or already-used recovery code' });
+      totpRateLimiter.reset(sessionId);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('POST /api/2fa/recovery-codes/verify error:', error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to verify recovery code',
+      });
     }
-
-    totpRateLimiter.reset(sessionId);
-    res.json({ success: true });
-  } catch (error) {
-    logger.error('POST /api/2fa/recovery-codes/verify error:', error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to verify recovery code',
-    });
-  }
-});
+  },
+);
 
 // ---------------------------------------------------------------------------
 // DELETE /api/2fa/recovery-codes
-// Invalidate all recovery codes for the authenticated user
+// Invalidate all recovery codes
 // ---------------------------------------------------------------------------
+
 router.delete('/2fa/recovery-codes', async (req: AuthenticatedRequest, res: Response) => {
   try {
     await recoveryCodeService.invalidateAll(req.user!.id);
@@ -98,80 +93,62 @@ router.delete('/2fa/recovery-codes', async (req: AuthenticatedRequest, res: Resp
 
 // ---------------------------------------------------------------------------
 // POST /api/2fa/notify
-// Send a 2FA lifecycle confirmation email (non-blocking on failure)
+// Send a 2FA lifecycle notification email
 // ---------------------------------------------------------------------------
-router.post('/2fa/notify', async (req: AuthenticatedRequest, res: Response) => {
-  const { event } = req.body as { event?: 'enrolled' | 'disabled' };
 
-  if (!event || (event !== 'enrolled' && event !== 'disabled')) {
-    return res.status(400).json({ success: false, error: "event must be 'enrolled' or 'disabled'" });
-  }
+router.post('/2fa/notify', validate(mfaNotifySchema), async (req: AuthenticatedRequest, res: Response) => {
+  const { event } = req.body;
 
-  const recipientEmail = req.user!.email;
-  const subject =
-    event === 'enrolled'
-      ? '2FA Enabled on your SYNCRO account'
-      : '2FA Disabled on your SYNCRO account';
-
-  const bodyText =
-    event === 'enrolled'
-      ? 'Two-factor authentication has been successfully enabled on your SYNCRO account.'
-      : 'Two-factor authentication has been disabled on your SYNCRO account. If you did not make this change, please contact support immediately.';
-
-  // Fire-and-forget — email failures must not block the response
-  emailService
-    .sendSimpleEmail(recipientEmail, subject, bodyText)
-    .catch((err: unknown) => logger.error('2FA notification email failed:', err));
-
+  totpRateLimiter.reset(userId);
   res.json({ success: true });
 });
 
 // ---------------------------------------------------------------------------
 // PUT /api/teams/:teamId/require-2fa
-// Set the team's 2FA enforcement policy (team owner only)
+// Set team 2FA enforcement policy (owner only)
 // ---------------------------------------------------------------------------
-router.put('/teams/:teamId/require-2fa', async (req: AuthenticatedRequest, res: Response) => {
-  const { teamId } = req.params;
-  const { required } = req.body as { required?: boolean };
 
-  if (typeof required !== 'boolean') {
-    return res.status(400).json({ success: false, error: 'required (boolean) is required' });
-  }
+router.put(
+  '/teams/:teamId/require-2fa',
+  validate(requireTwoFaSchema),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { teamId } = req.params;
+    const { required } = req.body;
 
-  try {
-    // Verify the authenticated user is the owner of this team
-    const { data: team, error: teamErr } = await supabase
-      .from('teams')
-      .select('id, owner_id')
-      .eq('id', teamId)
-      .single();
+    try {
+      const { data: team, error: teamErr } = await supabase
+        .from('teams')
+        .select('id, owner_id')
+        .eq('id', teamId)
+        .single();
 
-    if (teamErr || !team) {
-      return res.status(404).json({ success: false, error: 'Team not found' });
+      if (teamErr || !team) {
+        return res.status(404).json({ success: false, error: 'Team not found' });
+      }
+
+      if (team.owner_id !== req.user!.id) {
+        return res.status(403).json({ success: false, error: 'Only the team owner can change 2FA enforcement' });
+      }
+
+      const { error: updateErr } = await supabase
+        .from('teams')
+        .update({
+          require_2fa: required,
+          require_2fa_set_at: required ? new Date().toISOString() : null,
+        })
+        .eq('id', teamId);
+
+      if (updateErr) throw updateErr;
+
+      res.json({ success: true, data: { teamId, require2fa: required } });
+    } catch (error) {
+      logger.error('PUT /api/teams/:teamId/require-2fa error:', error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update team 2FA enforcement',
+      });
     }
-
-    if (team.owner_id !== req.user!.id) {
-      return res.status(403).json({ success: false, error: 'Only the team owner can change 2FA enforcement' });
-    }
-
-    const { error: updateErr } = await supabase
-      .from('teams')
-      .update({
-        require_2fa: required,
-        require_2fa_set_at: required ? new Date().toISOString() : null,
-      })
-      .eq('id', teamId);
-
-    if (updateErr) throw updateErr;
-
-    res.json({ success: true, data: { teamId, require2fa: required } });
-  } catch (error) {
-    logger.error('PUT /api/teams/:teamId/require-2fa error:', error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to update team 2FA enforcement',
-    });
-  }
-});
+  },
+);
 
 export default router;

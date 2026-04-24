@@ -2,9 +2,24 @@ import { monitoringService } from '../src/services/monitoring-service';
 import { supabase } from '../src/config/database';
 
 // Mock Supabase client
+const mockChain = {
+  select: jest.fn().mockReturnThis(),
+  eq: jest.fn().mockReturnThis(),
+  neq: jest.fn().mockReturnThis(),
+  gte: jest.fn().mockReturnThis(),
+  lte: jest.fn().mockReturnThis(),
+  order: jest.fn().mockReturnThis(),
+  limit: jest.fn().mockReturnThis(),
+  single: jest.fn().mockResolvedValue({ data: null, error: null }),
+  then: jest.fn().mockImplementation(function(resolve) {
+    return Promise.resolve({ data: null, error: null }).then(resolve);
+  }),
+};
+
 jest.mock('../src/config/database', () => ({
   supabase: {
-    from: jest.fn(),
+    from: jest.fn(() => mockChain),
+    rpc: jest.fn().mockResolvedValue({ data: null, error: new Error('RPC not implemented') }),
   },
 }));
 
@@ -22,6 +37,7 @@ jest.mock('../src/config/logger', () => ({
 describe('MonitoringService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: new Error('RPC not implemented') });
   });
 
   describe('getSubscriptionMetrics()', () => {

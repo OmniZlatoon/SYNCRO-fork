@@ -1,6 +1,3 @@
-To resolve the merge conflicts in the `SyncroSDK`, I have combined the static `verifyWebhookSignature` method from the `webhook-system` feature branch with the comprehensive service methods (Subscription management, Analytics, Webhooks, and Notifications) added in `main`.
-
-```typescript
 import axios, { type AxiosInstance } from "axios";
 import { EventEmitter } from "node:events";
 import * as crypto from "node:crypto";
@@ -29,6 +26,8 @@ import {
   AuthenticationError,
   RateLimitError,
   ValidationError,
+  ConflictError,
+  ForbiddenError,
   createApiError,
 } from "./errors.js";
 
@@ -301,18 +300,7 @@ export class SyncroSDK extends EventEmitter {
       this.emit("success", result);
       return result;
     } catch (error: any) {
-      const errorMessage = error.response?.data?.error || error.message;
-      this.log("Error cancelling subscription:", subscriptionId, errorMessage);
-
-      const failedResult: any = {
-        success: false,
-        status: "failed",
-        error: errorMessage,
-      };
-
-      this.emit("failure", { subscriptionId, error: errorMessage });
-      this.emit("error", new Error(errorMessage));
-      throw new Error(`Cancellation failed: ${errorMessage}`);
+      this.handleApiError(error);
     }
   }
 
@@ -320,9 +308,13 @@ export class SyncroSDK extends EventEmitter {
    * Get subcription details
    */
   async getSubscription(subscriptionId: string): Promise<Subscription> {
-    this.log("Fetching subscription:", subscriptionId);
-    const response = await this.client.get(`/subscriptions/${subscriptionId}`);
-    return this.normalizeSubscription(response.data.data);
+    try {
+      this.log("Fetching subscription:", subscriptionId);
+      const response = await this.client.get(`/subscriptions/${subscriptionId}`);
+      return this.normalizeSubscription(response.data.data);
+    } catch (error: any) {
+      this.handleApiError(error);
+    }
   }
 
   /**
@@ -478,16 +470,23 @@ export class SyncroSDK extends EventEmitter {
   private handleApiError(error: any): never {
     if (error.response) {
       const { status, data, headers } = error.response;
-      const message: string =
-        data?.error || data?.message || error.message || "Unknown API error";
-      const code: string | undefined = data?.code;
       const retryAfter = headers?.["retry-after"]
         ? parseInt(headers["retry-after"], 10)
         : undefined;
-      throw createApiError(status, message, code, retryAfter);
+      
+      const apiError = createApiError(status, data, retryAfter);
+      
+      this.log(`API Error: ${status}`, apiError.detail);
+      this.emit("error", apiError);
+      this.emit("failure", { error: apiError.detail, status });
+      
+      throw apiError;
     }
-    // Network / timeout errors
-    throw new SyncroError(error.message || "Network error", "NETWORK_ERROR");
+    
+    // Network / timeout / setup errors
+    const networkError = new SyncroError(error.message || "Network error", "NETWORK_ERROR");
+    this.emit("error", networkError);
+    throw networkError;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -913,5 +912,7 @@ export {
   AuthenticationError,
   RateLimitError,
   ValidationError,
-} from "./errors.js";
-```
+  ConflictError,
+  ForbiddenError,
+  createApiError,
+} from "./errors.js";

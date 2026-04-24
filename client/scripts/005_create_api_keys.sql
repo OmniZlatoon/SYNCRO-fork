@@ -3,10 +3,16 @@ create table if not exists public.api_keys (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   service_name text not null,
-  api_key_encrypted text not null,
+  api_key_encrypted text,
+  key_hash text,
+  scopes text[] default '{}' not null,
+  revoked boolean default false not null,
+  last_used_at timestamp with time zone,
+  request_count integer default 0 not null,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now(),
-  unique(user_id, service_name)
+  unique(user_id, service_name),
+  unique(key_hash)
 );
 
 -- Enable RLS

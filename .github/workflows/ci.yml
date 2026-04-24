@@ -22,7 +22,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Validate client environment variables
         env:
@@ -52,11 +52,11 @@ jobs:
         run: node backend/scripts/validate-env.js
 
   # ──────────────────────────────────────────────
-  # Job 2: Build the client
-  # Only runs if validate-env passes.
+  # Job 2: Dependency vulnerability scan
+  # Blocks PRs with High or Critical vulnerabilities.
   # ──────────────────────────────────────────────
-  build-client:
-    name: Build Client
+  security-audit:
+    name: Security Audit
     runs-on: ubuntu-latest
     needs: validate-env
 
@@ -71,9 +71,47 @@ jobs:
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
 
+      - name: Audit client dependencies
+        working-directory: client
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Audit backend dependencies
+        working-directory: backend
+        run: pnpm audit --audit-level=high --prod
+
+  # ──────────────────────────────────────────────
+  # Job 3: Build the client
+  # Only runs if validate-env passes.
+  # ──────────────────────────────────────────────
+  build-client:
+    name: Build Client
+    runs-on: ubuntu-latest
+    needs: [validate-env, security-audit]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: client/pnpm-lock.yaml
+
       - name: Install client dependencies
         working-directory: client
-        run: npm ci
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build client
         working-directory: client
@@ -84,7 +122,7 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
-        run: npm run build
+        run: pnpm run build
 
   # ──────────────────────────────────────────────
   # Job 3: Run backend tests
@@ -93,7 +131,7 @@ jobs:
   test-backend:
     name: Test Backend
     runs-on: ubuntu-latest
-    needs: validate-env
+    needs: [validate-env, security-audit]
 
     steps:
       - name: Checkout repository
@@ -102,16 +140,13 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
 
       - name: Install backend dependencies
         working-directory: backend
-        run: pnpm install
+        run: npm ci
 
       - name: Run backend tests
         working-directory: backend
@@ -129,4 +164,4 @@ jobs:
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           SOROBAN_CONTRACT_ADDRESS: ${{ secrets.SOROBAN_CONTRACT_ADDRESS }}
           STELLAR_NETWORK_URL: ${{ secrets.STELLAR_NETWORK_URL }}
-        run: pnpm test
+        run: npm test -- --coverage --ci

@@ -182,6 +182,7 @@
                         "symbol": "integrity_hash"
                       },
                       "val": {
+                        "bytes": "0000000000000000000000000000000000000000000000000000000000000000"
                         "bytes": "c479e07489843d0c8d2ba7007c22d046f41174f27fd9050bfa8e8da6e637b9ba"
                       }
                     },
@@ -207,6 +208,14 @@
                       },
                       "val": {
                         "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "spending_cap"
+                      },
+                      "val": {
+                        "i128": "1000"
                       }
                     },
                     {

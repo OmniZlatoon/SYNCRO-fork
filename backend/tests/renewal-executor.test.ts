@@ -1,4 +1,4 @@
-﻿jest.mock('../src/config/database', () => ({
+jest.mock('../src/config/database', () => ({
   supabase: { from: jest.fn() },
 }));
 
@@ -11,13 +11,8 @@ jest.mock('../src/services/blockchain-service', () => ({
   blockchainService: { syncSubscription: jest.fn() },
 }));
 
-jest.mock('../src/utils/transaction', () => ({
-  DatabaseTransaction: {
-    execute: jest.fn().mockImplementation(async (cb) => {
-      const db = jest.requireMock('../src/config/database');
-      return cb(db.supabase);
-    }),
-  },
+jest.mock('../src/services/webhook-service', () => ({
+  webhookService: { dispatchEvent: jest.fn().mockReturnValue(Promise.resolve()) },
 }));
 
 import { RenewalExecutor } from '../src/services/renewal-executor';
@@ -86,12 +81,14 @@ describe('RenewalExecutor', () => {
 
   it('should retry on retryable failures', async () => {
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
-      if (table === 'renewal_approvals') return makeChain({ data: null, error: { message: 'Not found' } });
+      // Throw for the first attempt to trigger execution_error
+      if (table === 'renewal_approvals') throw new Error('Database connection failed');
       return makeChain({ data: null, error: null });
     });
 
-    const result = await executor.executeRenewalWithRetry(mockRequest, 3);
+    const result = await executor.executeRenewalWithRetry(mockRequest, 2);
     expect(result).toBeDefined();
     expect(result.success).toBe(false);
+    expect(result.failureReason).toBe('execution_error');
   });
 });

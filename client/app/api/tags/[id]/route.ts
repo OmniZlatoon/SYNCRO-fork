@@ -17,5 +17,5 @@ export async function DELETE(
       return createSuccessResponse({ deleted: true }, HttpStatus.OK, context.requestId)
     },
     { requireAuth: true, rateLimit: RateLimiters.standard },
-  )(request, { params: { id } })
+  )(request)
 }

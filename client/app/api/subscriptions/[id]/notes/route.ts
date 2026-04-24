@@ -24,5 +24,5 @@ export async function PATCH(
       return createSuccessResponse({ updated: true }, HttpStatus.OK, context.requestId)
     },
     { requireAuth: true, rateLimit: RateLimiters.standard },
-  )(request, { params: { id } })
+  )(request)
 }

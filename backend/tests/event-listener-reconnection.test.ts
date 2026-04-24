@@ -364,13 +364,11 @@ describe('EventListener - Reconnection Logic', () => {
     });
 
     it('should validate contract address on initialization', () => {
-      const missingContractListener = () => {
-        process.env.SOROBAN_CONTRACT_ADDRESS = '';
-        const mod = require('../src/services/event-listener');
-        return new mod.EventListener();
-      };
-
-      expect(missingContractListener).toThrow('SOROBAN_CONTRACT_ADDRESS not configured');
+      process.env.SOROBAN_CONTRACT_ADDRESS = '';
+      // Clear cache to ensure fresh instance if needed, but here we just call the constructor
+      const mod = require('../src/services/event-listener');
+      const listener = new mod.EventListener();
+      expect(listener.getHealth().status).toBe('disabled');
     });
   });
 

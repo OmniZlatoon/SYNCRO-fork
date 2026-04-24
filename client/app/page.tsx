@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { AppClient } from "@/components/app/app-client";
-import { initialSubscriptions, initialEmailAccounts } from "@/lib/initial-data";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 
 // Helper to transform DB subscription (snake_case) to app format (camelCase)
@@ -46,42 +45,50 @@ async function getInitialData() {
         } = await supabase.auth.getUser();
 
         if (!user) {
-            // Not authenticated - return mock data for demo
+            // Not authenticated - return empty data
             return {
-                subscriptions: initialSubscriptions,
-                emailAccounts: initialEmailAccounts,
+                subscriptions: [],
+                emailAccounts: [],
+                payments: [],
                 priceChanges: [],
                 consolidationSuggestions: [],
             };
         }
 
         // Fetch real data from database
-        const [subscriptionsResult, emailAccountsResult] = await Promise.all([
+        const [subscriptionsResult, emailAccountsResult, paymentsResult] = await Promise.all([
             supabase
                 .from("subscriptions")
                 .select("*")
                 .eq("user_id", user.id)
                 .order("date_added", { ascending: false }),
             supabase.from("email_accounts").select("*").eq("user_id", user.id),
+            supabase
+                .from("payments")
+                .select("*")
+                .eq("user_id", user.id)
+                .order("created_at", { ascending: false }),
         ]);
 
         const subscriptions =
-            subscriptionsResult.data?.map(transformSubscription) ||
-            initialSubscriptions;
-        const emailAccounts = emailAccountsResult.data || initialEmailAccounts;
+            subscriptionsResult.data?.map(transformSubscription) || [];
+        const emailAccounts = emailAccountsResult.data || [];
+        const payments = paymentsResult.data || [];
 
         return {
             subscriptions,
             emailAccounts,
+            payments,
             priceChanges: [], // TODO: Fetch from database
             consolidationSuggestions: [], // TODO: Fetch from database
         };
     } catch (error) {
         console.error("Error fetching initial data:", error);
-        // Fallback to mock data on error
+        // Fallback to empty data on error
         return {
-            subscriptions: initialSubscriptions,
-            emailAccounts: initialEmailAccounts,
+            subscriptions: [],
+            emailAccounts: [],
+            payments: [],
             priceChanges: [],
             consolidationSuggestions: [],
         };
@@ -102,6 +109,7 @@ export default async function HomePage() {
             <AppClient
                 initialSubscriptions={initialData.subscriptions}
                 initialEmailAccounts={initialData.emailAccounts}
+                initialPayments={initialData.payments}
                 initialPriceChanges={initialData.priceChanges}
                 initialConsolidationSuggestions={
                     initialData.consolidationSuggestions

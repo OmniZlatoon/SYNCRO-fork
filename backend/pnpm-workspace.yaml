@@ -1,0 +1,3 @@
+onlyBuiltDependencies:
+  - '@sentry-internal/node-cpu-profiler'
+  - unrs-resolver

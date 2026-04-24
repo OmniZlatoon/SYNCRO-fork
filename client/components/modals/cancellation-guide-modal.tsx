@@ -275,7 +275,7 @@ export default function CancellationGuideModal({
         <div className={`p-6 border-t ${darkMode ? "border-[#374151]" : "border-gray-200"}`}>
           <button
             onClick={handleMarkAsCancelled}
-            disabled={submitting || (guide && !allStepsCompleted)}
+            disabled={submitting || (!!guide && !allStepsCompleted)}
             className={`w-full px-4 py-4 ${allStepsCompleted ? "bg-[#007A5C] text-white hover:bg-[#007A5C]/90" : "bg-[#FFD166] text-[#1E2A35] hover:bg-[#FFD166]/90"} rounded-xl font-bold text-lg shadow-lg shadow-[#FFD166]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2`}
           >
             {submitting ? (

@@ -1,6 +1,8 @@
 # Dependencies
 ./node_modules
 node_modules/
+# package-lock.json files are ignored globally; each workspace that uses npm
+# must be explicitly un-ignored below so the runner receives the lock file.
 package-lock.json
 npm-debug.log*
 yarn-debug.log*
@@ -100,4 +102,4 @@ coverage/
 *.claude
 CLAUDE.md
 
-backend/package-lock.json
+!backend/package-lock.json

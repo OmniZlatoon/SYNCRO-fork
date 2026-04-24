@@ -75,7 +75,10 @@ describe('ReminderEngine Batch Optimization', () => {
     
     // Verify batch upsert
     expect(supabase.from).toHaveBeenCalledWith('reminder_schedules');
-    const upsertCall = (supabase.from('reminder_schedules').upsert as jest.Mock).mock.calls[0];
+    // Retrieve the actual mock instance used for 'reminder_schedules'
+    const reminderStoreInstance = (supabase.from as jest.Mock).mock.results
+      .find(r => r.value && typeof r.value === 'object' && 'upsert' in r.value)?.value;
+    const upsertCall = (reminderStoreInstance.upsert as jest.Mock).mock.calls[0];
     const records = upsertCall[0];
     const options = upsertCall[1];
 

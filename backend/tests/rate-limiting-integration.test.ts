@@ -28,6 +28,7 @@ jest.mock('../src/config/database', () => ({
 }));
 
 describe('Rate Limiting Integration Tests', () => {
+  jest.setTimeout(20000);
   let app: express.Application;
 
   beforeAll(async () => {

@@ -121,8 +121,12 @@ export function isMaintenanceMode(): boolean {
  */
 export function getApiConfig() {
   const env = getEnv()
+  const stagingApi  = 'https://backend-staging.onrender.com'
+  const productionApi = 'https://backend-ai-sub.onrender.com'
+  const defaultBase =
+    process.env.NEXT_PUBLIC_APP_ENV === 'staging' ? stagingApi : productionApi
   return {
-    baseUrl: env.NEXT_PUBLIC_API_BASE || 'http://localhost:3000',
+    baseUrl: env.NEXT_PUBLIC_API_BASE || defaultBase,
     secretKey: env.API_SECRET_KEY,
     rateLimitEnabled: env.RATE_LIMIT_ENABLED,
   }

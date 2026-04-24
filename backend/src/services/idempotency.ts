@@ -122,6 +122,70 @@ export class IdempotencyService {
   }
 
   /**
+   * Find potential duplicate subscriptions for a user across all email accounts.
+   * Uses fuzzy name matching + exact price/cycle matching.
+   * Returns subscriptions that are likely duplicates of the candidate.
+   */
+  async findPotentialDuplicates(
+    userId: string,
+    candidate: { name: string; price: number; billing_cycle: string }
+  ): Promise<{ duplicates: any[]; message: string | null }> {
+    try {
+      const { data: existing, error } = await supabase
+        .from('subscriptions')
+        .select('id, name, price, billing_cycle, email_account_id, status')
+        .eq('user_id', userId)
+        .neq('status', 'deleted');
+
+      if (error) {
+        logger.error('findPotentialDuplicates query error:', error);
+        return { duplicates: [], message: null };
+      }
+
+      const normalize = (s: string) =>
+        s.toLowerCase()
+          .replace(/\s+(plus|pro|premium|basic|standard|enterprise|team|business)$/i, '')
+          .replace(/[^a-z0-9]/g, '');
+
+      const levenshtein = (a: string, b: string): number => {
+        const m: number[][] = Array.from({ length: b.length + 1 }, (_, i) => [i]);
+        for (let j = 0; j <= a.length; j++) m[0][j] = j;
+        for (let i = 1; i <= b.length; i++)
+          for (let j = 1; j <= a.length; j++)
+            m[i][j] = b[i - 1] === a[j - 1]
+              ? m[i - 1][j - 1]
+              : Math.min(m[i - 1][j - 1], m[i][j - 1], m[i - 1][j]) + 1;
+        return m[b.length][a.length];
+      };
+
+      const fuzzyMatch = (s1: string, s2: string): boolean => {
+        const n1 = normalize(s1);
+        const n2 = normalize(s2);
+        if (n1 === n2) return true;
+        const dist = levenshtein(n1, n2);
+        return dist / Math.max(n1.length, n2.length) < 0.2;
+      };
+
+      const duplicates = (existing || []).filter((sub) => {
+        const nameMatch = fuzzyMatch(candidate.name, sub.name);
+        const priceMatch = Math.abs(sub.price - candidate.price) < 0.01;
+        const cycleMatch = sub.billing_cycle === candidate.billing_cycle;
+        return nameMatch && priceMatch && cycleMatch;
+      });
+
+      const message =
+        duplicates.length > 0
+          ? 'We found a similar subscription already registered.'
+          : null;
+
+      return { duplicates, message };
+    } catch (err) {
+      logger.error('findPotentialDuplicates failed:', err);
+      return { duplicates: [], message: null };
+    }
+  }
+
+  /**
    * Clean up expired idempotency keys (should be run periodically)
    */
   async cleanupExpired(): Promise<number> {

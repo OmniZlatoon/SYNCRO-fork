@@ -1,0 +1,50 @@
+src/config/logger.ts(2,29): error TS2307: Cannot find module 'winston-daily-rotate-file' or its corresponding type declarations.
+src/middleware/auth.ts(13,5): error TS2300: Duplicate identifier 'email'.
+src/middleware/auth.ts(13,5): error TS2687: All declarations of 'email' must have identical modifiers.
+src/middleware/auth.ts(15,5): error TS2300: Duplicate identifier 'email'.
+src/middleware/auth.ts(15,5): error TS2687: All declarations of 'email' must have identical modifiers.
+src/middleware/auth.ts(88,3): error TS2741: Property 'role' is missing in type '{ id: any; authMethod: "api_key"; scopes: any[]; }' but required in type '{ id: string; email?: string; role: UserRole; authMethod?: "jwt" | "api_key"; scopes?: string[]; }'.
+src/routes/subscriptions.ts(148,5): error TS2345: Argument of type '{ name?: string; price?: number; category?: string; billing_cycle?: "yearly" | "monthly" | "quarterly"; currency?: string; logo_url?: string; website_url?: string; renewal_url?: string; }' is not assignable to parameter of type 'SubscriptionCreateInput'.
+  Property 'name' is optional in type '{ name?: string; price?: number; category?: string; billing_cycle?: "yearly" | "monthly" | "quarterly"; currency?: string; logo_url?: string; website_url?: string; renewal_url?: string; }' but required in type 'SubscriptionCreateInput'.
+src/routes/subscriptions.ts(169,80): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(183,5): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(205,77): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(223,75): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(238,5): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(262,80): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(285,73): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(294,77): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(320,5): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(341,77): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(393,5): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(406,66): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+  Type 'string[]' is not assignable to type 'string'.
+src/routes/subscriptions.ts(419,44): error TS2339: Property 'convertTrial' does not exist on type 'SubscriptionService'.
+src/routes/subscriptions.ts(425,44): error TS2339: Property 'cancelTrial' does not exist on type 'SubscriptionService'.
+src/routes/subscriptions.ts(430,43): error TS2339: Property 'getSavedTrialsCount' does not exist on type 'SubscriptionService'.
+src/routes/subscriptions.ts(437,45): error TS2339: Property 'previewImport' does not exist on type 'SubscriptionService'.
+src/routes/subscriptions.ts(444,44): error TS2339: Property 'commitImport' does not exist on type 'SubscriptionService'.
+src/routes/subscriptions.ts(482,28): error TS2304: Cannot find name 'resolveParam'.
+src/routes/subscriptions.ts(485,36): error TS1323: Dynamic imports are only supported when the '--module' flag is set to 'es2020', 'es2022', 'esnext', 'commonjs', 'amd', 'system', 'umd', 'node16', 'node18', 'node20', or 'nodenext'.
+src/services/subscription-service.ts(263,17): error TS2339: Property 'error' does not exist on type 'PostgrestQueryBuilder<any, any, any, "reminder_schedules", unknown>'.
+src/types/reminder.ts(42,3): error TS2300: Duplicate identifier 'website_url'.
+src/types/reminder.ts(49,3): error TS2300: Duplicate identifier 'is_trial'.
+src/types/reminder.ts(50,3): error TS2300: Duplicate identifier 'trial_ends_at'.
+src/types/reminder.ts(51,3): error TS2300: Duplicate identifier 'trial_converts_to_price'.
+src/types/reminder.ts(52,3): error TS2300: Duplicate identifier 'credit_card_required'.
+src/types/reminder.ts(56,3): error TS2300: Duplicate identifier 'is_trial'.
+src/types/reminder.ts(57,3): error TS2300: Duplicate identifier 'trial_ends_at'.
+src/types/reminder.ts(58,3): error TS2300: Duplicate identifier 'trial_converts_to_price'.
+src/types/reminder.ts(59,3): error TS2300: Duplicate identifier 'credit_card_required'.
+src/types/reminder.ts(60,3): error TS2300: Duplicate identifier 'website_url'.

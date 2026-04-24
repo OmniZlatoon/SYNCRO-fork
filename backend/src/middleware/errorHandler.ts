@@ -15,12 +15,15 @@ const mapZodError = (error: ZodError) => {
 
 /**
  * Global error handler middleware following RFC 7807 Problem Details.
+ * On failure a **400 Bad Request** response is returned using the
+ * RFC 9457 Problem Details format.
  */
 export const errorHandler = (
   err: Error,
   req: Request,
   res: Response,
-  next: NextFunction
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _next: NextFunction
 ) => {
   const requestId = (res.getHeader('x-request-id') || req.headers['x-request-id']) as string;
   const instance = req.path;

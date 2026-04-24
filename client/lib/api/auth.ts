@@ -6,7 +6,7 @@
 import { type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { ApiErrors } from './errors'
-import { ErrorCode, type RequestContext } from './types'
+import { RequestContext } from './types'
 
 /**
  * Get authenticated user from request

@@ -24,12 +24,10 @@ export * from './env'
 /**
  * Helper to create a complete API route handler with all middleware
  */
-import { type NextRequest } from 'next/server'
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { withErrorHandling, createSuccessResponse } from './errors'
 import { requireAuth, createRequestContext } from './auth'
 import { type RequestContext, type ApiResponse } from './types'
-import { RateLimiters } from './rate-limit'
 import { isMaintenanceMode } from './env'
 import { ApiErrors } from './errors'
 
@@ -84,7 +82,7 @@ export function createApiRoute(
     }
 
     // Execute handler
-    return handler(request, context, user)
+    return handler(request, context, user) as unknown as NextResponse<ApiResponse>
   }, crypto.randomUUID())
 }
 

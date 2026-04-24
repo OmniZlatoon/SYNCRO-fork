@@ -1,9 +1,9 @@
 import { type NextRequest } from "next/server"
-import { createApiRoute, createSuccessResponse, validateRequestBody, CommonSchemas, RateLimiters } from "@/lib/api/index"
 import { HttpStatus } from "@/lib/api/types"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
-import { checkOwnership } from "@/lib/api/auth"
+import { CommonSchemas, validateRequestBody } from "@/lib/api/validation"
+import { createApiRoute, createSuccessResponse, RateLimiters } from "@/lib/api/index"
 
 // Validation schemas
 const createSubscriptionSchema = z.object({
@@ -34,7 +34,7 @@ export const GET = createApiRoute(
     })
 
     const query = getSubscriptionsSchema.partial().safeParse(queryParams)
-    const { page = 1, limit = 20, status, category } = query.success ? query.data : {} as { page?: number; limit?: number; status?: string; category?: string }
+    const { page = 1, limit = 20, status = "active", category = "undefined" } = query.success ? query.data : {}
 
     const supabase = await createClient()
     let queryBuilder = supabase

@@ -5,7 +5,7 @@ import { digestService } from '../services/digest-service';
 import { digestEmailService } from '../services/digest-email-service';
 import logger from '../config/logger';
 
-const router = Router();
+const router: Router = Router();
 
 // ─── User-facing routes (authenticated) ──────────────────────────────────────
 

@@ -33,7 +33,7 @@ setInterval(() => {
  */
 function defaultKeyGenerator(request: NextRequest): string {
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 
-             request.headers.get('x-real-ip') || 
+             request.headers.get('x-real-ip') ||
              'unknown'
   return `rate_limit:${ip}`
 }

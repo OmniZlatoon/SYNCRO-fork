@@ -9,6 +9,11 @@ export interface RequestContext {
   userId?: string;
 }
 
+/** Extended Express Request with requestId attached */
+export interface RequestWithContext extends Request {
+  requestId?: string;
+}
+
 /**
  * Singleton AsyncLocalStorage instance.
  * Import this anywhere in the codebase to read the current request context
@@ -27,18 +32,28 @@ export const requestContextStorage = new AsyncLocalStorage<RequestContext>();
  *   their requests with server-side logs.
  */
 export function requestIdMiddleware(
-  req: Request,
+  req: RequestWithContext,
   res: Response,
   next: NextFunction,
 ): void {
   const requestId =
     (req.headers['x-request-id'] as string | undefined) || uuidv4();
 
+  // Attach to request object for easy manual passing if needed
+  req.requestId = requestId;
   res.setHeader('x-request-id', requestId);
 
   requestContextStorage.run({ requestId }, () => {
     next();
   });
+}
+
+/**
+ * Helper to get the current requestId from AsyncLocalStorage.
+ * Returns undefined if called outside of a request context.
+ */
+export function getRequestId(): string | undefined {
+  return requestContextStorage.getStore()?.requestId;
 }
 
 /**

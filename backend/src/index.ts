@@ -19,7 +19,7 @@ Sentry.init({
 });
 
 import logger from './config/logger';
-import { requestIdMiddleware } from './middleware/requestContext';
+import { requestIdMiddleware, RequestWithContext } from './middleware/requestContext';
 import { requestLoggerMiddleware } from './middleware/requestLogger';
 import { schedulerService } from './services/scheduler';
 import { reminderEngine } from './services/reminder-engine';
@@ -143,37 +143,37 @@ app.get('/api/reminders/status', (req, res) => {
 });
 
 // Admin Monitoring Endpoints
-app.get('/api/admin/metrics/subscriptions', createAdminLimiter(), adminAuth, async (req, res) => {
+app.get('/api/admin/metrics/subscriptions', createAdminLimiter(), adminAuth, async (req: RequestWithContext, res) => {
   try {
-    const metrics = await monitoringService.getSubscriptionMetrics();
+    const metrics = await monitoringService.getSubscriptionMetrics(req.requestId);
     res.json(metrics);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch subscription metrics' });
   }
 });
 
-app.get('/api/admin/metrics/renewals', createAdminLimiter(), adminAuth, async (req, res) => {
+app.get('/api/admin/metrics/renewals', createAdminLimiter(), adminAuth, async (req: RequestWithContext, res) => {
   try {
-    const metrics = await monitoringService.getRenewalMetrics();
+    const metrics = await monitoringService.getRenewalMetrics(req.requestId);
     res.json(metrics);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch renewal metrics' });
   }
 });
 
-app.get('/api/admin/metrics/activity', createAdminLimiter(), adminAuth, async (req, res) => {
+app.get('/api/admin/metrics/activity', createAdminLimiter(), adminAuth, async (req: RequestWithContext, res) => {
   try {
-    const metrics = await monitoringService.getAgentActivity();
+    const metrics = await monitoringService.getAgentActivity(req.requestId);
     res.json(metrics);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch agent activity' });
   }
 });
 
-app.get('/api/admin/health', createAdminLimiter(), adminAuth, async (req, res) => {
+app.get('/api/admin/health', createAdminLimiter(), adminAuth, async (req: RequestWithContext, res) => {
   try {
     const includeHistory = req.query.history !== 'false';
-    const health = await healthService.getAdminHealth(includeHistory, eventListener.getHealth());
+    const health = await healthService.getAdminHealth(includeHistory, eventListener.getHealth(), req.requestId);
     const statusCode = health.status === 'unhealthy' ? 503 : 200;
     res.status(statusCode).json({
       ...health,

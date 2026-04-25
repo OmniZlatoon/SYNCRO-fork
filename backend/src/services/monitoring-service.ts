@@ -34,14 +34,15 @@ export class MonitoringService {
     /**
      * Helper to time a query and log its execution time.
      */
-    private async timeQuery<T>(name: string, query: Promise<T>): Promise<T> {
+    private async timeQuery<T>(name: string, query: Promise<T>, contextId?: string): Promise<T> {
         const start = Date.now();
+        const meta = contextId ? { requestId: contextId } : {};
         try {
             const result = await query;
-            logger.info(`Monitoring Query: ${name} took ${Date.now() - start}ms`);
+            logger.info(`Monitoring Query: ${name} took ${Date.now() - start}ms`, meta);
             return result;
         } catch (error) {
-            logger.error(`Monitoring Query: ${name} failed after ${Date.now() - start}ms`, error);
+            logger.error(`Monitoring Query: ${name} failed after ${Date.now() - start}ms`, { ...meta, error });
             throw error;
         }
     }
@@ -49,7 +50,7 @@ export class MonitoringService {
     /**
      * Get subscription metrics
      */
-    async getSubscriptionMetrics(): Promise<SubscriptionMetrics> {
+    async getSubscriptionMetrics(contextId?: string): Promise<SubscriptionMetrics> {
         return this.timeQuery('getSubscriptionMetrics', (async () => {
             // Use RPC for efficiency on large tables
             const { data, error } = await supabase.rpc('get_subscription_metrics');
@@ -90,13 +91,13 @@ export class MonitoringService {
             }
 
             return data as SubscriptionMetrics;
-        })());
+        })(), contextId);
     }
 
     /**
      * Get renewal metrics based on notification deliveries
      */
-    async getRenewalMetrics(): Promise<RenewalMetrics> {
+    async getRenewalMetrics(contextId?: string): Promise<RenewalMetrics> {
         return this.timeQuery('getRenewalMetrics', (async () => {
             const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
             
@@ -139,13 +140,13 @@ export class MonitoringService {
             metrics.failure_rate = (failures / deliveries.length) * 100;
 
             return metrics;
-        })());
+        })(), contextId);
     }
 
     /**
      * Get agent activity summary
      */
-    async getAgentActivity(): Promise<AgentActivity> {
+    async getAgentActivity(contextId?: string): Promise<AgentActivity> {
         return this.timeQuery('getAgentActivity', (async () => {
             const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
@@ -170,13 +171,13 @@ export class MonitoringService {
                 confirmed_blockchain_events: bcLogs?.filter((l: any) => l.status === 'confirmed').length || 0,
                 failed_blockchain_events: bcLogs?.filter((l: any) => l.status === 'failed').length || 0,
             };
-        })());
+        })(), contextId);
     }
 
     /**
      * Get trial-specific metrics including "saved by SYNCRO" count
      */
-    async getTrialMetrics(): Promise<TrialMetrics> {
+    async getTrialMetrics(contextId?: string): Promise<TrialMetrics> {
       try {
         const now = new Date().toISOString();
         const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -214,7 +215,7 @@ export class MonitoringService {
           automatic_conversions: events.filter((e) => e.conversion_type === 'automatic').length,
         };
       } catch (error) {
-        logger.error('Error fetching trial metrics:', error);
+        logger.error('Error fetching trial metrics:', { requestId: contextId, error });
         throw error;
       }
     }

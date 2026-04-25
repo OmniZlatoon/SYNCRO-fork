@@ -1,20 +1,26 @@
 import { monitoringService } from '../src/services/monitoring-service';
 import { supabase } from '../src/config/database';
 
-// Mock Supabase client
-const mockChain = {
-  select: jest.fn().mockReturnThis(),
-  eq: jest.fn().mockReturnThis(),
-  neq: jest.fn().mockReturnThis(),
-  gte: jest.fn().mockReturnThis(),
-  lte: jest.fn().mockReturnThis(),
-  order: jest.fn().mockReturnThis(),
-  limit: jest.fn().mockReturnThis(),
-  single: jest.fn().mockResolvedValue({ data: null, error: null }),
-  then: jest.fn().mockImplementation(function(resolve) {
-    return Promise.resolve({ data: null, error: null }).then(resolve);
-  }),
+// Helper to create a fluent mock for Supabase queries
+const createMockQuery = (data: any, error: any = null, count: number = 0) => {
+  const query: any = {
+    select: jest.fn().mockReturnThis(),
+    eq: jest.fn().mockReturnThis(),
+    neq: jest.fn().mockReturnThis(),
+    gte: jest.fn().mockReturnThis(),
+    lte: jest.fn().mockReturnThis(),
+    order: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
+    single: jest.fn().mockResolvedValue({ data, error }),
+    maybeSingle: jest.fn().mockResolvedValue({ data, error }),
+    then: jest.fn().mockImplementation(function(resolve) {
+      return Promise.resolve({ data, error, count: count || (Array.isArray(data) ? data.length : 0) }).then(resolve);
+    }),
+  };
+  return query;
 };
+
+const mockChain = createMockQuery(null);
 
 jest.mock('../src/config/database', () => ({
   supabase: {
@@ -63,13 +69,7 @@ describe('MonitoringService', () => {
         },
       ];
 
-      const mockQuery = {
-        select: jest.fn().mockResolvedValue({
-          data: mockSubscriptions,
-          error: null,
-        }),
-      };
-
+      const mockQuery = createMockQuery(mockSubscriptions);
       (supabase.from as jest.Mock).mockReturnValue(mockQuery);
 
       const metrics = await monitoringService.getSubscriptionMetrics();
@@ -103,9 +103,13 @@ describe('MonitoringService', () => {
       ];
 
       const mockQuery = {
-        select: jest.fn().mockResolvedValue({
-          data: mockSubscriptions,
-          error: null,
+        ...mockChain,
+        select: jest.fn().mockReturnThis(),
+        then: jest.fn().mockImplementation(function(resolve) {
+          return Promise.resolve({
+            data: mockSubscriptions,
+            error: null,
+          }).then(resolve);
         }),
       };
 
@@ -137,9 +141,13 @@ describe('MonitoringService', () => {
       ];
 
       const mockQuery = {
-        select: jest.fn().mockResolvedValue({
-          data: mockSubscriptions,
-          error: null,
+        ...mockChain,
+        select: jest.fn().mockReturnThis(),
+        then: jest.fn().mockImplementation(function(resolve) {
+          return Promise.resolve({
+            data: mockSubscriptions,
+            error: null,
+          }).then(resolve);
         }),
       };
 
@@ -152,6 +160,7 @@ describe('MonitoringService', () => {
 
     it('should handle empty subscription list', async () => {
       const mockQuery = {
+        ...mockChain,
         select: jest.fn().mockResolvedValue({
           data: [],
           error: null,
@@ -185,9 +194,16 @@ describe('MonitoringService', () => {
       ];
 
       const mockQuery = {
-        select: jest.fn().mockResolvedValue({
-          data: mockSubscriptions,
-          error: null,
+        ...mockChain,
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        then: jest.fn().mockImplementation(function(resolve) {
+          return Promise.resolve({
+            data: mockSubscriptions,
+            error: null,
+            count: mockSubscriptions.length,
+          }).then(resolve);
         }),
       };
 
@@ -201,6 +217,7 @@ describe('MonitoringService', () => {
 
     it('should throw error on database failure', async () => {
       const mockQuery = {
+        ...mockChain,
         select: jest.fn().mockResolvedValue({
           data: null,
           error: new Error('Database error'),
@@ -226,9 +243,13 @@ describe('MonitoringService', () => {
       ];
 
       const mockQuery = {
-        select: jest.fn().mockResolvedValue({
-          data: mockDeliveries,
-          error: null,
+        ...mockChain,
+        select: jest.fn().mockReturnThis(),
+        then: jest.fn().mockImplementation(function(resolve) {
+          return Promise.resolve({
+            data: mockDeliveries,
+            error: null,
+          }).then(resolve);
         }),
       };
 
@@ -252,9 +273,13 @@ describe('MonitoringService', () => {
       ];
 
       const mockQuery = {
-        select: jest.fn().mockResolvedValue({
-          data: mockDeliveries,
-          error: null,
+        ...mockChain,
+        select: jest.fn().mockReturnThis(),
+        then: jest.fn().mockImplementation(function(resolve) {
+          return Promise.resolve({
+            data: mockDeliveries,
+            error: null,
+          }).then(resolve);
         }),
       };
 
@@ -278,6 +303,7 @@ describe('MonitoringService', () => {
 
     it('should handle empty delivery list', async () => {
       const mockQuery = {
+        ...mockChain,
         select: jest.fn().mockResolvedValue({
           data: [],
           error: null,
@@ -302,9 +328,15 @@ describe('MonitoringService', () => {
       ];
 
       const mockQuery = {
-        select: jest.fn().mockResolvedValue({
-          data: mockDeliveries,
-          error: null,
+        ...mockChain,
+        select: jest.fn().mockReturnThis(),
+        gte: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        then: jest.fn().mockImplementation(function(resolve) {
+          return Promise.resolve({
+            data: mockDeliveries,
+            error: null,
+          }).then(resolve);
         }),
       };
 
@@ -324,9 +356,15 @@ describe('MonitoringService', () => {
       ];
 
       const mockQuery = {
-        select: jest.fn().mockResolvedValue({
-          data: mockDeliveries,
-          error: null,
+        ...mockChain,
+        select: jest.fn().mockReturnThis(),
+        gte: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        then: jest.fn().mockImplementation(function(resolve) {
+          return Promise.resolve({
+            data: mockDeliveries,
+            error: null,
+          }).then(resolve);
         }),
       };
 
@@ -347,9 +385,15 @@ describe('MonitoringService', () => {
       ];
 
       const mockQuery = {
-        select: jest.fn().mockResolvedValue({
-          data: mockDeliveries,
-          error: null,
+        ...mockChain,
+        select: jest.fn().mockReturnThis(),
+        gte: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        then: jest.fn().mockImplementation(function(resolve) {
+          return Promise.resolve({
+            data: mockDeliveries,
+            error: null,
+          }).then(resolve);
         }),
       };
 
@@ -364,6 +408,7 @@ describe('MonitoringService', () => {
 
     it('should throw error on database failure', async () => {
       const mockQuery = {
+        ...mockChain,
         select: jest.fn().mockResolvedValue({
           data: null,
           error: new Error('Database error'),
@@ -428,9 +473,15 @@ describe('MonitoringService', () => {
           gte: jest.fn().mockResolvedValue(mockProcessed),
         })
         .mockReturnValueOnce({
-          select: jest.fn().mockResolvedValue({
-            data: null,
-            error: null,
+          select: jest.fn().mockReturnThis(),
+          order: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          gte: jest.fn().mockReturnThis(),
+          then: jest.fn().mockImplementation(function(resolve) {
+            return Promise.resolve({
+              data: null,
+              error: null,
+            }).then(resolve);
           }),
         });
 
@@ -484,9 +535,15 @@ describe('MonitoringService', () => {
           gte: jest.fn().mockResolvedValue({ count: undefined }),
         })
         .mockReturnValueOnce({
-          select: jest.fn().mockResolvedValue({
-            data: [],
-            error: null,
+          select: jest.fn().mockReturnThis(),
+          order: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          gte: jest.fn().mockReturnThis(),
+          then: jest.fn().mockImplementation(function(resolve) {
+            return Promise.resolve({
+              data: [],
+              error: null,
+            }).then(resolve);
           }),
         });
 
@@ -638,6 +695,7 @@ describe('MonitoringService', () => {
   describe('Edge Cases and Error Handling', () => {
     it('should handle division by zero in rate calculations', async () => {
       const mockQuery = {
+        ...mockChain,
         select: jest.fn().mockResolvedValue({
           data: [],
           error: null,
@@ -664,9 +722,12 @@ describe('MonitoringService', () => {
       ];
 
       const mockQuery = {
-        select: jest.fn().mockResolvedValue({
-          data: mockSubscriptions,
-          error: null,
+        select: jest.fn().mockReturnThis(),
+        then: jest.fn().mockImplementation(function(resolve) {
+          return Promise.resolve({
+            data: mockSubscriptions,
+            error: null,
+          }).then(resolve);
         }),
       };
 

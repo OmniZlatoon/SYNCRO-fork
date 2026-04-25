@@ -70,7 +70,7 @@ export class HealthService {
   /**
    * Gather current health metrics (failed renewals/hour, contract errors, agent activity).
    */
-  async getCurrentMetrics(): Promise<CurrentHealthMetrics> {
+  async getCurrentMetrics(contextId?: string): Promise<CurrentHealthMetrics> {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const [
@@ -102,7 +102,7 @@ export class HealthService {
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      monitoringService.getAgentActivity(),
+      monitoringService.getAgentActivity(contextId),
     ]);
 
     const lastActivityAt = lastActivityRes.data?.updated_at ?? null;
@@ -195,8 +195,9 @@ export class HealthService {
    * Record current metrics and alerts to history.
    */
   async recordSnapshot(): Promise<void> {
+    const contextId = `snapshot-${Date.now()}`;
     try {
-      const metrics = await this.getCurrentMetrics();
+      const metrics = await this.getCurrentMetrics(contextId);
       const alerts = this.evaluateAlerts(metrics);
 
       await supabase.from('health_metrics_snapshots').insert({
@@ -211,7 +212,7 @@ export class HealthService {
         alerts_triggered: alerts,
       });
     } catch (error) {
-      logger.error('HealthService.recordSnapshot failed:', error);
+      logger.error('HealthService.recordSnapshot failed:', { requestId: contextId, error });
     }
   }
 
@@ -253,24 +254,14 @@ export class HealthService {
    *   base unhealthy (any listener)      → unhealthy
    * Full admin health: current metrics, alerts, status, event listener state, optional history.
    */
-  async getAdminHealth(includeHistory: boolean = true, eventListenerHealth?: EventListenerHealth): Promise<AdminHealthResponse> {
-    const metrics = await this.getCurrentMetrics();
+  async getAdminHealth(includeHistory: boolean = true, eventListenerHealth?: EventListenerHealth, contextId?: string): Promise<AdminHealthResponse> {
+    const metrics = await this.getCurrentMetrics(contextId);
     const alerts = this.evaluateAlerts(metrics);
-    const listenerHealth = eventListener.getHealth();
 
-    const baseStatus = this.getStatus(alerts);
-    const status: AdminHealthResponse['status'] =
-      listenerHealth.status === 'unhealthy' && baseStatus === 'healthy'
-        ? 'degraded'
-        : listenerHealth.status === 'unhealthy' && baseStatus === 'degraded'
-        ? 'unhealthy'
-        : baseStatus;
+    // Use provided health or fallback to singleton
+    const elHealth: EventListenerHealth = eventListenerHealth ?? eventListener.getHealth();
 
-    // Degrade overall status if event listener is not running
-    const elHealth: EventListenerHealth = eventListenerHealth ?? {
-      status: 'stopped',
-      lastProcessedLedger: null,
-    };
+    // Add alerts for event listener status
     if (elHealth.status === 'disabled' || elHealth.status === 'failed') {
       alerts.push({
         id: 'event_listener',
@@ -290,6 +281,7 @@ export class HealthService {
         triggeredAt: new Date().toISOString(),
       });
     }
+
     const status = this.getStatus(alerts);
     const history = includeHistory ? await this.getHistory(24) : undefined;
 
@@ -299,7 +291,6 @@ export class HealthService {
       metrics,
       alerts,
       thresholds: this.getThresholds(),
-      eventListener: listenerHealth,
       eventListener: elHealth,
       history,
     };

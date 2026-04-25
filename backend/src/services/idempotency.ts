@@ -185,10 +185,7 @@ export class IdempotencyService {
     }
   }
 
-  /**
-   * Clean up expired idempotency keys (should be run periodically)
-   */
-  async cleanupExpired(): Promise<number> {
+  async cleanupExpiredKeys(): Promise<number> {
     try {
       const { data, error } = await supabase
         .from('idempotency_keys')

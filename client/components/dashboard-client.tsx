@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
+import { SuggestionsPanel } from "@/components/app/SuggestionsPanel"
 
 interface Subscription {
   id: string
@@ -111,6 +112,8 @@ export default function DashboardClient({
       </header>
 
       <main className="px-4 sm:px-8 py-6 space-y-6">
+        {/* Smart money-saving suggestions */}
+        <SuggestionsPanel />
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[

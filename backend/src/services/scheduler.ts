@@ -7,6 +7,10 @@ import { renewalLockService } from './renewal-lock-service';
 import { digestService } from './digest-service';
 import { webhookService } from './webhook-service';
 import { complianceService } from './compliance-service';
+import { supabase } from '../config/database';
+import { suggestionService } from './suggestion-service';
+import { supabase } from '../config/database';
+import { suggestionService } from './suggestion-service';
 
 export class SchedulerService {
   private jobs: cron.ScheduledTask[] = [];
@@ -127,6 +131,53 @@ export class SchedulerService {
           logger.info(`Hard delete job completed: ${processed} accounts processed`);
         } catch (error) {
           logger.error('Error in hard delete job:', error);
+        }
+      }),
+    );
+
+    // ── Nightly at 1 AM UTC: pre-compute smart suggestions ───────────────
+    this.jobs.push(
+      cron.schedule('0 1 * * *', async () => {
+        logger.info('Running nightly suggestion generation');
+        try {
+          const { data: users } = await supabase.from('profiles').select('id');
+          let count = 0;
+          for (const user of users ?? []) {
+            try {
+              await suggestionService.generateSuggestions(user.id);
+              count++;
+            } catch {
+              // individual user failure is non-fatal
+            }
+          }
+          logger.info(`Nightly suggestion generation completed for ${count} users`);
+        } catch (error) {
+          logger.error('Error in nightly suggestion generation:', error);
+        }
+      }),
+    );
+
+    // ── Nightly at 1 AM UTC: pre-compute smart suggestions ───────────────
+    this.jobs.push(
+      cron.schedule('0 1 * * *', async () => {
+        logger.info('Running nightly suggestion generation');
+        try {
+          // Fetch all active user IDs and warm suggestions (errors per user are non-fatal)
+          const { data: users } = await supabase
+            .from('profiles')
+            .select('id');
+          let count = 0;
+          for (const user of users ?? []) {
+            try {
+              await suggestionService.generateSuggestions(user.id);
+              count++;
+            } catch {
+              // individual user failure is non-fatal
+            }
+          }
+          logger.info(`Nightly suggestion generation completed for ${count} users`);
+        } catch (error) {
+          logger.error('Error in nightly suggestion generation:', error);
         }
       }),
     );

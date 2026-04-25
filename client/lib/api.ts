@@ -15,6 +15,27 @@ const api = axios.create({
   },
 });
 
+/** Read the csrf-token cookie set by the backend and attach it as a header. */
+function getCsrfToken(): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie.match(/(?:^|;\s*)csrf-token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
+const MUTATING_METHODS = new Set(["post", "put", "patch", "delete"]);
+
+// Attach x-csrf-token header on all mutating requests
+api.interceptors.request.use((config) => {
+  if (config.method && MUTATING_METHODS.has(config.method.toLowerCase())) {
+    const token = getCsrfToken();
+    if (token) {
+      config.headers = config.headers ?? {};
+      config.headers["x-csrf-token"] = token;
+    }
+  }
+  return config;
+});
+
 // Add response interceptor to log auth errors
 api.interceptors.response.use(
   (response) => response,

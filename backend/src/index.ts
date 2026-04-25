@@ -38,6 +38,8 @@ import apiKeysRoutes from './routes/api-keys';
 import digestRoutes from './routes/digest';
 import mfaRoutes from './routes/mfa';
 import pushNotificationRoutes from './routes/push-notifications';
+import referralRoutes from './routes/referrals';
+import suggestionRoutes from './routes/suggestions';
 import gmailRouter from '../routes/integrations/gmail'
 import outlookRouter from '../routes/integrations/outlook'
 import { createExchangeRatesRouter } from './routes/exchange-rates';
@@ -50,6 +52,7 @@ import { eventListener } from './services/event-listener';
 import { expiryService } from './services/expiry-service';
 import { authenticate } from './middleware/auth'
 import { adminAuth } from './middleware/admin';
+import { csrfProtection } from './middleware/csrf';
 import { createAdminLimiter, RateLimiterFactory } from './middleware/rate-limit-factory';
 import { scheduleAutoResume } from './jobs/auto-resume';
 import { errorHandler } from './middleware/errorHandler';
@@ -79,7 +82,7 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', FRONTEND_URL);
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Idempotency-Key, If-Match');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Idempotency-Key, If-Match, x-csrf-token');
 
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -95,6 +98,9 @@ app.use(express.urlencoded({ extended: true }));
 // Request context and logging
 app.use(requestIdMiddleware);
 app.use(requestLoggerMiddleware);
+
+// CSRF protection (double-submit cookie) for all mutating API routes
+app.use('/api', csrfProtection);
 
 // Public Endpoints
 app.get('/health', (req, res) => {
@@ -125,6 +131,8 @@ app.use('/api/user', userRoutes);
 app.use('/api/digest', digestRoutes);
 app.use('/api/mfa', mfaRoutes);
 app.use('/api/notifications/push', pushNotificationRoutes);
+app.use('/api/referrals', referralRoutes);
+app.use('/api/suggestions', suggestionRoutes);
 app.use('/api/exchange-rates', createExchangeRatesRouter(exchangeRateService));
 
 app.get('/api/reminders/status', (req, res) => {

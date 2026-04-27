@@ -29,6 +29,8 @@ export interface Subscription {
   resume_at: string | null;
   pause_reason: string | null;
   last_interaction_at: string | null;
+  last_renewal_attempt_at?: string | null;
+  failure_count?: number;
 }
 
 export interface SubscriptionCreateInput {

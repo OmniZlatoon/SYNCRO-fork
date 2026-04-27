@@ -65,6 +65,8 @@ describe('EventListener - Reconnection Logic', () => {
     // Reset fetch mock
     (global.fetch as jest.Mock).mockResolvedValue({
       json: jest.fn().mockResolvedValue({
+        jsonrpc: '2.0',
+        id: 1,
         result: { sequence: 200 },
       }),
     });
@@ -155,6 +157,8 @@ describe('EventListener - Reconnection Logic', () => {
 
     it('should retry after failed event processing', async () => {
       const mockEventResponse = {
+        jsonrpc: '2.0',
+        id: 1,
         result: {
           events: [
             {
@@ -254,6 +258,8 @@ describe('EventListener - Reconnection Logic', () => {
         .mockRejectedValueOnce(new Error('Network error 2'))
         .mockResolvedValueOnce({
           json: jest.fn().mockResolvedValue({
+            jsonrpc: '2.0',
+            id: 1,
             result: { events: [] },
           }),
         });
@@ -284,6 +290,8 @@ describe('EventListener - Reconnection Logic', () => {
 
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         json: jest.fn().mockResolvedValue({
+          jsonrpc: '2.0',
+          id: 1,
           result: { events: [mockEvent] },
         }),
       });
@@ -397,6 +405,8 @@ describe('EventListener - Reconnection Logic', () => {
     it('should handle missing data in RPC response', async () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         json: jest.fn().mockResolvedValue({
+          jsonrpc: '2.0',
+          id: 1,
           result: {}, // Missing events
         }),
       });

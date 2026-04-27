@@ -5,22 +5,22 @@ import { generateCycleId } from '../utils/cycle-id';
 import { renewalCooldownService } from './renewal-cooldown-service';
 import { calculateBackoffDelay } from '../utils/retry';
 
-interface ContractEvent {
-  type: string;
-  ledger: number;
-  txHash: string;
-  contractId: string;
-  topics: string[];
-  value: any;
-}
-
-interface ProcessedEvent {
-  sub_id: number;
-  event_type: string;
-  ledger: number;
-  tx_hash: string;
-  event_data: any;
-}
+import { 
+  ContractEvent, 
+  ProcessedEvent, 
+  EventType,
+  RenewalSuccessPayload,
+  RenewalFailedPayload,
+  StateTransitionPayload,
+  ApprovalCreatedPayload,
+  ApprovalRejectedPayload,
+  ExecutorAssignedPayload,
+  DuplicateRenewalRejectedPayload,
+  LifecycleTimestampUpdatedPayload,
+  ContractEventValue
+} from '../types/contract-events';
+import { rpcEventResponseSchema } from '../schemas/contract-events';
+import { Subscription } from '../types/subscription';
 
 export type EventListenerStatus = 'running' | 'stopped' | 'disabled' | 'retrying' | 'failed';
 
@@ -239,8 +239,18 @@ export class EventListener {
         signal: requestController.signal,
       });
 
-      const data: any = await response.json();
-      return data.result?.events || [];
+      const data = await response.json();
+      const parsed = rpcEventResponseSchema.safeParse(data);
+      
+      if (!parsed.success) {
+        logger.error('RPC event response validation failed', { 
+          error: parsed.error.format(),
+          raw: data 
+        });
+        return [];
+      }
+
+      return parsed.data.result?.events || [];
     } finally {
       this.endRequest(requestController);
     }
@@ -262,22 +272,22 @@ export class EventListener {
 
   private getEventHandler(eventType: string) {
     const handlers: Record<string, (e: ContractEvent) => Promise<ProcessedEvent | null>> = {
-      RenewalSuccess: this.handleRenewalSuccess.bind(this),
-      RenewalFailed: this.handleRenewalFailed.bind(this),
-      StateTransition: this.handleStateTransition.bind(this),
-      ApprovalCreated: this.handleApprovalCreated.bind(this),
-      ApprovalRejected: this.handleApprovalRejected.bind(this),
-      ExecutorAssigned: this.handleExecutorAssigned.bind(this),
-      ExecutorRemoved: this.handleExecutorRemoved.bind(this),
-      DuplicateRenewalRejected: this.handleDuplicateRenewalRejected.bind(this),
-      LifecycleTimestampUpdated: this.handleLifecycleTimestampUpdated.bind(this),
+      [EventType.RENEWAL_SUCCESS]: this.handleRenewalSuccess.bind(this),
+      [EventType.RENEWAL_FAILED]: this.handleRenewalFailed.bind(this),
+      [EventType.STATE_TRANSITION]: this.handleStateTransition.bind(this),
+      [EventType.APPROVAL_CREATED]: this.handleApprovalCreated.bind(this),
+      [EventType.APPROVAL_REJECTED]: this.handleApprovalRejected.bind(this),
+      [EventType.EXECUTOR_ASSIGNED]: this.handleExecutorAssigned.bind(this),
+      [EventType.EXECUTOR_REMOVED]: this.handleExecutorRemoved.bind(this),
+      [EventType.DUPLICATE_RENEWAL_REJECTED]: this.handleDuplicateRenewalRejected.bind(this),
+      [EventType.LIFECYCLE_TIMESTAMP_UPDATED]: this.handleLifecycleTimestampUpdated.bind(this),
     };
 
     return handlers[eventType];
   }
 
   private async handleRenewalSuccess(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id } = event.value;
+    const { sub_id } = event.value as RenewalSuccessPayload;
 
     const { data: sub } = await supabase
       .from('subscriptions')
@@ -285,9 +295,9 @@ export class EventListener {
       .eq('blockchain_sub_id', sub_id)
       .single();
 
-    const updateData: Record<string, any> = {
+    const updateData: Partial<Subscription> = {
       status: 'active',
-      last_payment_date: new Date().toISOString(),
+      last_interaction_at: new Date().toISOString(),
       failure_count: 0,
       last_renewal_attempt_at: new Date().toISOString(),
     };
@@ -319,7 +329,7 @@ export class EventListener {
   }
 
   private async handleRenewalFailed(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id, failure_count } = event.value;
+    const { sub_id, failure_count } = event.value as RenewalFailedPayload;
 
     const { data: sub } = await supabase
       .from('subscriptions')
@@ -327,7 +337,7 @@ export class EventListener {
       .eq('blockchain_sub_id', sub_id)
       .single();
 
-    const updateData: Record<string, any> = {
+    const updateData: Partial<Subscription> = {
       status: 'retrying',
       failure_count,
       last_renewal_attempt_at: new Date().toISOString(),
@@ -361,7 +371,7 @@ export class EventListener {
   }
 
   private async handleStateTransition(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id, new_state } = event.value;
+    const { sub_id, new_state } = event.value as StateTransitionPayload;
 
     const statusMap: Record<string, string> = {
       Active: 'active',
@@ -384,7 +394,7 @@ export class EventListener {
   }
 
   private async handleApprovalCreated(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id, approval_id, max_spend, expires_at } = event.value;
+    const { sub_id, approval_id, max_spend, expires_at } = event.value as ApprovalCreatedPayload;
 
     await supabase
       .from('renewal_approvals')
@@ -406,7 +416,7 @@ export class EventListener {
   }
 
   private async handleApprovalRejected(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id, approval_id, reason } = event.value;
+    const { sub_id, approval_id, reason } = event.value as ApprovalRejectedPayload;
 
     await supabase
       .from('renewal_approvals')
@@ -427,7 +437,7 @@ export class EventListener {
   }
 
   private async handleExecutorAssigned(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id, executor } = event.value;
+    const { sub_id, executor } = event.value as ExecutorAssignedPayload;
 
     await supabase
       .from('subscriptions')
@@ -444,7 +454,7 @@ export class EventListener {
   }
 
   private async handleExecutorRemoved(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id } = event.value;
+    const { sub_id } = event.value as { sub_id: number };
 
     await supabase
       .from('subscriptions')
@@ -461,7 +471,7 @@ export class EventListener {
   }
 
   private async handleDuplicateRenewalRejected(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id, cycle_id } = event.value;
+    const { sub_id, cycle_id } = event.value as DuplicateRenewalRejectedPayload;
     logger.warn('Duplicate renewal rejected', { sub_id, cycle_id, ledger: event.ledger });
 
     return {
@@ -474,7 +484,7 @@ export class EventListener {
   }
 
   private async handleLifecycleTimestampUpdated(event: ContractEvent): Promise<ProcessedEvent | null> {
-    const { sub_id, event_kind, timestamp } = event.value;
+    const { sub_id, event_kind, timestamp } = event.value as LifecycleTimestampUpdatedPayload;
 
     const column = LIFECYCLE_COLUMN_MAP[event_kind as number];
     if (!column) {
@@ -530,7 +540,7 @@ export class EventListener {
   private async updateLastProcessedLedger(ledger: number) {
     await supabase
       .from('event_cursor')
-      .upsert({ id: 1, last_ledger: ledger });
+      .upsert({ id: 1, last_ledger: ledger } as any);
   }
 
   private async getCurrentLedger(): Promise<number> {
@@ -547,8 +557,8 @@ export class EventListener {
         signal: requestController.signal,
       });
 
-      const data: any = await response.json();
-      return data.result?.sequence || 0;
+      const data = await response.json();
+      return (data as any).result?.sequence || 0;
     } finally {
       this.endRequest(requestController);
     }
